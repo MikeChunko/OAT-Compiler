@@ -111,7 +111,7 @@ let z : int =
 let z : int =
   let x = 3 in begin
     let y = x + x in begin
-	y * y + x
+	    y * y + x
     end
   end
 
@@ -139,15 +139,15 @@ let z : int =
   that takes an int argument and produces an int result.
   See IOC Chapter 3.1
  
-  Functions values are introduced using the 'fun' keyword and the '->' sytnax:
+  Functions values are introduced using the 'fun' keyword and the '->' syntax:
    fun (x:int) -> x + x    (* a function that takes an int and doubles it *)
  
-  Functions are first class -- they can passed around just like integers or
+  Functions are first class -- they can be passed around just like integers or
   other primitive data.
 *)
 
 (* bind the variable 'double' of type 'int -> int' to a function: *)
-let double : int -> int = fun  (x:int) -> x + x
+let double : int -> int = fun (x:int) -> x + x
 
 (*
   Functions are called or 'applied' by juxtaposition -- the space ' ' 
@@ -155,7 +155,7 @@ let double : int -> int = fun  (x:int) -> x + x
   Unlike Java or C, no parentheses are needed, exept for grouping and 
   precedence:
 *)
-let doubled_z    : int = double z                  (* call double on z  *)
+let doubled_z    : int = double z                  (* call double on z *)
 let quadrupled_z : int = double (double z)         (* parens needed for grouping *)
 let sextupled_z  : int = quadrupled_z + (double z)  
 
@@ -321,11 +321,11 @@ let quadrupled_z_again : int = twice double z  (* pass double to twice *)
   makes the first case of part1_tests "Problem 1" succeed. See the 
   gradedtests.ml file.  
 *)   
-let pieces : int = -1
+let pieces : int = 8
 
 (* Implement a function cube that takes an int value and produces its cube. *)
 let cube : int -> int = 
-fun _ -> failwith "cube unimplemented"   
+  fun (x:int) : int -> x * x *x
 
 
 (* Problem 1-2 *)
@@ -339,7 +339,7 @@ fun _ -> failwith "cube unimplemented"
   and computes the total value of the coins in cents: 
 *)
 let cents_of : int -> int -> int -> int -> int = 
-  fun _ -> failwith "cents_of unimplemented"
+  fun (q:int) (d:int) (n:int) (p:int) : int -> 25 * q + 10 * d + 5 * n + p
 
 
 (* Problem 1-3 *)
@@ -391,7 +391,7 @@ let triple : int * bool * string = (3, true, "some string")
 let triple : int * bool * string = 3, true, "some string"                                   
 
 (* Tuples can nest *)
-let pair_of_triples: (int * bool * string) * (int * bool * string) =
+let pair_of_triples : (int * bool * string) * (int * bool * string) =
   (triple, triple)   
 
 (* 
@@ -435,7 +435,7 @@ let pair_of_triples: (int * bool * string) * (int * bool * string) =
  
   The generic parts of types in OCaml are written using tick ' notation:
   as shown in the examples below.  What you might write in Java as
-   List<A>  you would write in OCaml as 'a list -- type parameters
+  List<A>  you would write in OCaml as 'a list -- type parameters
   are written in prefix.
   Similarly, Map<A,B> would be written as ('a,'b) map -- multiple
   type parameters use a 'tuple' notation.
@@ -495,7 +495,10 @@ let pair_up (x:'a) : ('a * 'a) = (x, x)
   Complete the definition of third_of_three; be sure to give it 
   the correct type signature (we will grade that part manually):
 *)
-let third_of_three _ = failwith "third_of_three unimplemented"
+let third_of_three (t:'a * 'b * 'c) : 'c = 
+  begin match t with
+    | (_, _, x) -> x
+  end
 
 
 (*
@@ -508,7 +511,7 @@ let third_of_three _ = failwith "third_of_three unimplemented"
 *)
 
 let compose_pair (p:(('b -> 'c) * ('a -> 'b))) : 'a -> 'c =
-failwith "compose_pair unimplemented"
+  fun 'a 'c : ('a -> 'c) = 'a
 
 
 

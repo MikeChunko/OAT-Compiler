@@ -511,9 +511,7 @@ let third_of_three (t:'a * 'b * 'c) : 'c =
 *)
 
 let compose_pair (p:(('b -> 'c) * ('a -> 'b))) : 'a -> 'c =
-  fun 'a 'c : ('a -> 'c) = 'a
-
-
+  match p with (g, f) -> fun (x:'a) : 'c -> g (f x)
 
 
 (******************************************************************************)
@@ -685,14 +683,17 @@ let rec mylist_to_list (l:'a mylist) : 'a list =
   the inverse of the mylist_to_list function given above.
 *)
 let rec list_to_mylist (l:'a list) : 'a mylist =
-failwith "list_to_mylist unimplemented"
+  begin match l with
+    | [] -> Nil
+    | h::tl -> Cons(h, list_to_mylist tl)
+  end
 
 
 (*
   Problem 3-2
   
   Implement the library function append, which takes two lists (of the same
-  times) and concatenates them.  Do not use the library function or the built-in
+  types) and concatenates them.  Do not use the library function or the built-in
   short-hand '@'. 
  
   (append [1;2;3] [4;5]) should evaluate to [1;2;3;4;5]
@@ -702,7 +703,10 @@ failwith "list_to_mylist unimplemented"
   append.  So (List.append [1;2] [3]) is the same as  ([1;2] @ [3]).
 *) 
 let rec append (l1:'a list) (l2:'a list) : 'a list =
-failwith "append unimplemented"
+  begin match l1 with
+    | [] -> l2
+    | h::tl -> h::(append tl l2)
+  end
   
 (*
   Problem 3-3
@@ -711,7 +715,10 @@ failwith "append unimplemented"
   you might want to call append.  Do not use the library function.
 *)
 let rec rev (l:'a list) : 'a list =
-failwith "rev unimplemented"
+  begin match l with
+    | [] -> []
+    | h::tl -> append (rev tl) [h]
+  end
 
 (*
   Problem 3-4
@@ -723,7 +730,12 @@ failwith "rev unimplemented"
   OCaml will compile a tail recursive function to a simple loop.
 *)
 let rev_t (l: 'a list) : 'a list =
-failwith "rev_t unimplemented"
+  let rec helper (acc:'a list) (l1:'a list) : 'a list =
+    begin match l1 with
+      | [] -> acc
+      | h::tl -> helper (h::acc) tl
+    end
+  in helper [] l
 
 
 (*
@@ -740,7 +752,19 @@ failwith "rev_t unimplemented"
   evaluates to true or false.
 *)
 let rec insert (x:'a) (l:'a list) : 'a list =
-failwith "insert unimplemented"
+  begin match l with
+    | [] -> [x]
+    | h::tl -> begin
+      if h < x then
+        h::(insert x tl)
+      else begin
+        if h = x then (* x is already in l *)
+          l
+        else
+          x::l
+      end
+    end
+  end
   
   
 (*
@@ -751,9 +775,10 @@ failwith "insert unimplemented"
   Hint: you might want to use the insert function that you just defined.
 *)
 let rec union (l1:'a list) (l2:'a list) : 'a list =
- failwith "union unimplemented"
-
-
+  begin match l1 with
+    | [] -> l2
+    | h::tl -> union tl (insert h l2)
+  end
             
                               
                                                   
@@ -774,7 +799,7 @@ let rec union (l1:'a list) (l2:'a list) : 'a list =
   OCaml come from ML - meta language).
  
   We will implement several different object languages in this course.  Within
-  the metalanguage, we use ordinary datatypes: lists, tuples, trees, unions,etc.
+  the metalanguage, we use ordinary datatypes: lists, tuples, trees, unions, etc.
   to represent the features of the object language.  A compiler is just a 
   function that translates one representation of an object language into 
   another (usually while preserving some notion of a program's 'behavior').
@@ -842,7 +867,13 @@ let e3 : exp = Mult(Var "y", Mult(e2, Neg e2))     (* "y * ((x+1) * -(x+1))" *)
   Hint: you probably want to use the 'union' function you wrote for Problem 3-5.
 *)
 let rec vars_of (e:exp) : string list =
-failwith "vars_of unimplemented"
+  begin match e with 
+    | Var x -> [x]
+    | Const _ -> []
+    | Add (e1, e2) -> union (vars_of e1) (vars_of e2)
+    | Mult (e1, e2) -> union (vars_of e1) (vars_of e2)
+    | Neg e1 -> vars_of e1
+  end
 
 
 (*
@@ -904,7 +935,15 @@ let ctxt2 : ctxt = [("x", 2L); ("y", 7L)]  (* maps "x" to 2L, "y" to 7L *)
   such value, it should raise the Not_found exception.
 *)
 let rec lookup (x:string) (c:ctxt) : int64 =
-failwith "unimplemented"
+  begin match c with
+    | [] -> raise Not_found
+    | h::tl -> (
+        if fst h = x then
+          snd h
+        else
+          lookup x tl
+    )
+  end
 
 
 (* 
@@ -931,7 +970,13 @@ failwith "unimplemented"
 *)        
 
 let rec interpret (c:ctxt) (e:exp) : int64 =
-  failwith "unimplemented"
+  begin match e with
+    | Var x -> lookup x c
+    | Const v -> v
+    | Add (e1, e2) -> Int64.add (interpret c e1) (interpret c e2)
+    | Mult (e1, e2) -> Int64.mul (interpret c e1) (interpret c e2)
+    | Neg e1 -> Int64.neg (interpret c e1)
+  end
 
 
 (*
@@ -977,7 +1022,7 @@ let rec interpret (c:ctxt) (e:exp) : int64 =
 *)   
 
 let rec optimize (e:exp) : exp =
-failwith "optimize unimplemented"  
+  failwith "optimize unimplemented"  
   
 
 (******************************************************************************)

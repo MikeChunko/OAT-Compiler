@@ -156,6 +156,10 @@ let part4_tests : suite = [
     ("optimize1", assert_eqf (fun () -> optimize (Add(Const 3L, Const 4L))) (Const 7L));
     ("optimize2", assert_eqf (fun () -> optimize (Mult(Const 0L, Var "x"))) (Const 0L));
     ("optimize3", assert_eqf (fun () -> optimize (Add(Const 3L, Mult(Const 0L, Var "x")))) (Const 3L));
+    ("optimize4", assert_eqf (fun () -> interpret ctxt1 (optimize e1)) 6L);
+    ("optimize5", assert_eqf (fun () -> interpret ctxt1 (optimize e2)) 4L);
+    ("optimize6", (fun () -> try ignore (interpret ctxt1 (optimize e3)); failwith "bad interpret" with Not_found -> ()));
+    ("optimize7", assert_eqf (fun () -> optimize (Neg(Add(Const 0L, Mult(Const 0L, Var "x"))))) (Const 0L));
   ]);
   
   GradedTest ("Problem4-4harder", 5, [
@@ -167,7 +171,9 @@ let part4_tests : suite = [
   ]);
  
   GradedTest ("Problem5", 5, [
-  
+    ("compile1", assert_eqf (fun () -> run ctxt1 (compile e1)) 6L);
+    ("compile2", assert_eqf (fun () -> run ctxt1 (compile e2)) 4L);
+    ("compile3", (fun () -> try ignore (run ctxt1 (compile e3)); failwith "bad interpret" with Not_found -> ()));
   ]);
 ]
 

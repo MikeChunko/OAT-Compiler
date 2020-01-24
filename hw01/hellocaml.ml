@@ -1022,7 +1022,27 @@ let rec interpret (c:ctxt) (e:exp) : int64 =
 *)   
 
 let rec optimize (e:exp) : exp =
-  failwith "optimize unimplemented"  
+  begin match e with
+    | Add (e1, e2) ->
+      begin match (optimize e1, optimize e2) with
+        | (Const x, Const y) -> Const (Int64.add x y)
+        | (Const 0L, e3) | (e3, Const 0L) -> e3
+        | (e3, e4) -> Add (e3, e4)
+      end
+    | Mult (e1, e2) ->
+      begin match (optimize e1, optimize e2) with
+        | (Const 0L, _) | (_, Const 0L) -> Const 0L
+        | (Const 1L, e4) | (e4, Const 1L) -> e4
+        | (e3, e4) -> Mult (e3, e4)
+      end
+    | Neg (e1) ->
+      begin match (optimize e1) with
+        | (Neg e2) -> e2
+        | (Const x) -> Const (Int64.neg x)
+        | e2 -> Neg e2
+      end
+    | e1 -> e1
+  end
   
 
 (******************************************************************************)
@@ -1152,9 +1172,7 @@ let ans1 = run [] p1
   For all expressions e, contexts c (defining the variables in e), and int64
   values v:
 
-     (interpret c e) = v       if and only if
-     (run c (compile e)) = v
- 
+  
   Hints: 
    - Think about how to define your compiler compositionally so that you build
      up the sequence of instructions for a compound expression like Add(e1, e2)
@@ -1165,9 +1183,15 @@ let ans1 = run [] p1
 
    - You should test the correctness of your compiler on several examples.
 *)
-let rec compile (e:exp) : program =
-failwith "compile unimplemented"  
 
+let rec compile (e:exp) : program =
+  begin match optimize e with
+    | Add (e1, e2) -> append (append (compile e1) (compile e2)) [IAdd]
+    | Mult (e1, e2) -> append (append (compile e1) (compile e2)) [IMul]
+    | Neg e1 -> append (compile e1) [INeg]
+    | Var x -> [IPushV x]
+    | Const x -> [IPushC x]
+  end  
 
 
 (************)

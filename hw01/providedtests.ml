@@ -13,4 +13,16 @@ let provided_tests : suite = [
     ("case3", assert_eqf (fun () -> prob3_case3) 64);
   ]);
   
+  Test ("Problem4-4 Custom Tests", [
+    ("optimize4", assert_eqf (fun () -> interpret ctxt1 (optimize e1)) 6L);
+    ("optimize5", assert_eqf (fun () -> interpret ctxt1 (optimize e2)) 4L);
+    ("optimize6", (fun () -> try ignore (interpret ctxt1 (optimize e3)); failwith "bad interpret" with Not_found -> ()));
+    ("optimize7", assert_eqf (fun () -> optimize (Neg(Add(Const 0L, Mult(Const 0L, Var "x"))))) (Const 0L));
+  ]);
+
+  Test ("Problem5 Custom Tests", [
+    ("compile1", assert_eqf (fun () -> run ctxt1 (compile e1)) 6L);
+    ("compile2", assert_eqf (fun () -> run ctxt1 (compile e2)) 4L);
+    ("compile3", (fun () -> try ignore (run ctxt1 (compile e3)); failwith "bad interpret" with Not_found -> ()));
+  ]);
 ] 

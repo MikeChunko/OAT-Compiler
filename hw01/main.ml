@@ -19,12 +19,12 @@ let exec_tests () =
   raise Ran_tests
 
 let do_one_file fn =
-  let _ = Printf.printf "Processing: %s\n" fn in () 
+  let _ = Printf.printf "Processing: %s\n" fn in ()
 
 (* Use the --test option to run unit tests and the quit the program. *)
 let argspec = [
   ("--test", Unit exec_tests, "run the test suite, ignoring other inputs");
-] 
+]
 
 let _ =
   try

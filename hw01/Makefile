@@ -22,4 +22,4 @@ zip: $(SUBMIT)
 
 
 clean:
-	ocamlbuild -clean
+	ocamlbuild -clean && rm main.native

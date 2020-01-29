@@ -826,6 +826,12 @@ let e2 : exp = Add(Var "x", Const 1L)    (* "x + 1" *)
 
 let e3 : exp = Mult(Var "y", Mult(e2, Neg e2))     (* "y * ((x+1) * -(x+1))" *)
 
+let e4 : exp = Neg(Neg(Neg(Neg(Var "x"))))  (* "x" *)
+
+let e5 : exp = Mult(Mult(Var "x", Var "x"), Mult(Var "z", Var "z"))  (* "(x^2) * (z^2)" *)
+
+let e6 : exp = Add(Mult(Mult(Var "x", Var "x"), Mult(Var "z", Var "z")), Var "c")  (* "((x^2) * (z^2)) + c" *)
+
 (*
    Problem 4-1
 
@@ -875,6 +881,7 @@ type ctxt = (string * int64) list
 (* Here are some example evalution contexts: *)
 let ctxt1 : ctxt = [("x", 3L)]             (* maps "x" to 3L *)
 let ctxt2 : ctxt = [("x", 2L); ("y", 7L)]  (* maps "x" to 2L, "y" to 7L *)
+let ctxt3 : ctxt = [("x", 1L); ("y", 2L); ("z", 3L)]
 
 (*
   When interpreting an expression, we need to look up the value

@@ -137,7 +137,8 @@ let sbytes_of_data : data -> sbyte list = function
 let debug_simulator = ref false
 
 (* Interpret a condition code with respect to the given flags. *)
-let interp_cnd {fo; fs; fz} : cnd -> bool = fun x -> failwith "interp_cnd unimplemented"
+let interp_cnd {fo; fs; fz} : cnd -> bool = fun x -> 
+  failwith "interp_cnd unimplemented"
 
 
 
@@ -154,7 +155,7 @@ let map_addr (addr:quad) : int option =
     - set the condition flags
 *)
 let step (m:mach) : unit =
-failwith "step unimplemented"
+  failwith "step unimplemented"
 
 (* Runs the machine until the rip register reaches a designated
    memory address. *)
@@ -192,7 +193,7 @@ exception Redefined_sym of lbl
   HINT: List.fold_left and List.fold_right are your friends.
  *)
 let assemble (p:prog) : exec =
-failwith "assemble unimplemented"
+  failwith "assemble unimplemented"
 
 (* Convert an object file into an executable machine state. 
     - allocate the mem array
@@ -208,4 +209,4 @@ failwith "assemble unimplemented"
   may be of use.
 *)
 let load {entry; text_pos; data_pos; text_seg; data_seg} : mach = 
-failwith "load unimplemented"
+  failwith "load unimplemented"

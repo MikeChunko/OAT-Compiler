@@ -831,6 +831,10 @@ let e5 : exp = Mult(Mult(Var "x", Var "x"), Mult(Var "z", Var "z"))  (* "(x^2) *
 
 let e6 : exp = Add(Mult(Mult(Var "x", Var "x"), Mult(Var "z", Var "z")), Var "c")  (* "((x^2) * (z^2)) + c" *)
 
+let e7 : exp = Mult(e5, Add(Neg(e5), e5)) (* "e5 * (e5-e5)" *)
+
+let e8 : exp = Mult(e5, Add(Neg(e5), Neg(e5))) (* "e5 * -2e5" *)
+
 (*
    Problem 4-1
 

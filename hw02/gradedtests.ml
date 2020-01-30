@@ -17,12 +17,12 @@ let helloworld = [ text "foo"
                             ; Movq, [~$100; ~%Rax]
                             ; Retq, []
                             ]
-                     ; text "main" 
+                     ; text "main"
                             [ Xorq, [~%Rax; ~%Rax]
                             ; Movq, [Ind1 (Lbl "baz"); ~%Rax]
                             ; Retq, []
                             ]
-                     ; data "baz" 
+                     ; data "baz"
                             [ Quad (Lit 99L)
                             ; Asciz "Hello, world!"
                             ]
@@ -40,7 +40,7 @@ let factorial_iter n = [ text "main"
                                   ; Jmp,   [~$$"loop"]
                                   ]
                            ; text "exit"
-                                  [ Retq,  [] 
+                                  [ Retq,  []
                                   ]
                            ]
 
@@ -58,7 +58,7 @@ let factorial_rec n = [ text "fac"
                           ; text "exit"
                                  [ Movq,  [~$1; ~%Rax]
                                  ; Addq,  [~$8; ~%Rsp]
-                                 ; Retq,  [] 
+                                 ; Retq,  []
                                  ]
                           ; gtext "main"
                                  [ Movq,  [~$n; ~%Rdi]
@@ -78,7 +78,7 @@ let test_exec: exec =
   { entry = 0x400008L
   ; text_pos = 0x400000L
   ; data_pos = 0x400064L
-  ; text_seg = [] 
+  ; text_seg = []
   ; data_seg = []
   }
 
@@ -141,7 +141,7 @@ let cs_test (n:int) (m:mach) (fo',fs',fz') =
   cc_test (Printf.sprintf "expected OF:%b SF:%b ZF:%b" fo' fs' fz')
     n m (not fo',not fs',not fz')
     (fun m -> m.flags.fo = fo' && m.flags.fs = fs' && m.flags.fz = fz')
-    
+
 let cso_test (n: int) (m:mach) (fo':bool) =
   cc_test (Printf.sprintf "expected OF:%b" fo') n m (not fo',false,false)
     (fun m -> m.flags.fo = fo')
@@ -151,14 +151,14 @@ let csi_test (n: int) (m:mach) =
     (fun m -> m.flags.fo && m.flags.fs && m.flags.fz)
 
 let segfault_test addr () =
-  match map_addr addr with 
+  match map_addr addr with
     | Some i -> failwith "Should have raised X86_segmentation_fault"
     | None -> ()
 
 let undefinedsym_test (p:prog) () =
   try ignore (assemble p);
     failwith "Should have raised Undefined_sym"
-  with 
+  with
     | Undefined_sym _ -> ()
     | _ -> failwith "Should have raised Undefined_sym"
 
@@ -496,9 +496,9 @@ let medium_tests : suite = [
     ) exit_addr);
   ]);
   GradedTest("Functionality Tests", 3, functionality_tests);
-  GradedTest("Hidden Functionality Tests", 2, hidden_functionality_tests);  
+  GradedTest("Hidden Functionality Tests", 2, hidden_functionality_tests);
   GradedTest("Instruction Tests", 5, instruction_tests);
-  GradedTest("Hidden Instruction Tests", 5, hidden_instruction_tests);  
+  GradedTest("Hidden Instruction Tests", 5, hidden_instruction_tests);
   GradedTest("Condition Flag Set Tests", 3, condition_flag_set_tests);
   GradedTest("Hidden Condition Flag Set Tests", 2, hidden_condition_flag_set_tests);
 ]
@@ -514,11 +514,11 @@ let hard_tests : suite = [
 
 let manual_tests : suite = [
   GradedTest ("PartIIITestCase (manual)", 10, [
-  
+
   ]);
-  
+
   GradedTest ("Style (manual)", 5, [
-  
+
   ]);
 ]
 

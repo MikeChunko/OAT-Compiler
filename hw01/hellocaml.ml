@@ -1013,12 +1013,15 @@ let rec optimize (e:exp) : exp =
     begin match (optimize e1, optimize e2) with
     | (Const 0L, _) | (_, Const 0L) -> Const 0L
     | (Const 1L, e4) | (e4, Const 1L) -> e4
+    | (Const x, Const y) -> Const (Int64.mul x y)
     | (e3, e4) -> Mult (e3, e4)
     end
   | Neg (e1) ->
     begin match (optimize e1) with
     | (Neg e2) -> e2
     | (Const x) -> Const (Int64.neg x)
+    | Add (Const x, e2) | Add (e2, Const x) -> Add (Const (Int64.neg x), optimize (Neg (e2)))
+    | Mult (Const x, e2) | Mult (e2, Const x) -> Mult (Const (Int64.neg x), e2)
     | e2 -> Neg e2
     end
   | e1 -> e1

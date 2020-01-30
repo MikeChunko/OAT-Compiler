@@ -17,6 +17,8 @@ let provided_tests : suite = [
     ("interpret1", assert_eqf (fun () -> interpret ctxt3 e4) 1L);
     ("interpret2", assert_eqf (fun () -> interpret ctxt3 e5) 9L);
     ("interpret3", (fun () -> try ignore (interpret ctxt3 e6); failwith "bad interpret" with Not_found -> ()));
+    ("interpret4", assert_eqf (fun () -> interpret ctxt3 e7) 0L);
+    ("interpret5", assert_eqf (fun () -> interpret ctxt3 e8) (-162L));
   ]);
 
   Test ("Problem4-4 Harder Custom Tests", [

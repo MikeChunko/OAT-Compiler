@@ -502,8 +502,7 @@ let third_of_three (t:'a * 'b * 'c) : 'c =
 *)
 
 let compose_pair (p:(('b -> 'c) * ('a -> 'b))) : 'a -> 'c =
-  match p with (g, f) -> fun (x:'a) : 'c -> g (f x)
-
+  match p with (g, f) -> fun (x:'a) -> g (f x)
 
 (******************************************************************************)
 (*                                                                            *)
@@ -738,10 +737,10 @@ let rev_t (l: 'a list) : 'a list =
 let rec insert (x:'a) (l:'a list) : 'a list =
   match l with
   | [] -> [x]
-  | h::tl -> begin 
+  | h::tl -> begin
     if h < x then h::(insert x tl)
     else if h = x then l
-    else x::l 
+    else x::l
     end
 
 

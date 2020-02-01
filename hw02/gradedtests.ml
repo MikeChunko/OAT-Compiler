@@ -196,15 +196,11 @@ let interp_cnd_tests = [
 let mov_ri = test_machine
   [InsB0 (Movq, [~$42; ~%Rax]);InsFrag;InsFrag;InsFrag;InsFrag;InsFrag;InsFrag;InsFrag]
 
-
-
 let add = test_machine
   [InsB0 (Addq, [~$1; ~%Rax])            ;InsFrag;InsFrag;InsFrag;InsFrag;InsFrag;InsFrag;InsFrag
   ;InsB0 (Addq, [~%Rax; ~%Rbx])          ;InsFrag;InsFrag;InsFrag;InsFrag;InsFrag;InsFrag;InsFrag
   ;InsB0 (Addq, [~%Rbx; stack_offset 0L]);InsFrag;InsFrag;InsFrag;InsFrag;InsFrag;InsFrag;InsFrag
   ]
-
-
 
 let hidden_functionality_tests = [
 
@@ -226,7 +222,6 @@ let mov_mr = test_machine
   [InsB0 (Movq, [~$42; ~%Rax]);InsFrag;InsFrag;InsFrag;InsFrag;InsFrag;InsFrag;InsFrag
   ;InsB0 (Movq, [~%Rax; stack_offset (-8L)]);InsFrag;InsFrag;InsFrag;InsFrag;InsFrag;InsFrag;InsFrag]
 
-
 let subq = test_machine
     [InsB0 (Subq, [~$1; ~%Rax]);InsFrag;InsFrag;InsFrag;InsFrag;InsFrag;InsFrag;InsFrag
     ;InsB0 (Subq, [~%Rax; ~%Rbx]);InsFrag;InsFrag;InsFrag;InsFrag;InsFrag;InsFrag;InsFrag
@@ -243,7 +238,6 @@ let andq = test_machine
     ;InsB0 (Andq, [stack_offset 0L; ~%Rcx]);InsFrag;InsFrag;InsFrag;InsFrag;InsFrag;InsFrag;InsFrag
     ]
 
-
 let negq = test_machine
     [InsB0 (Movq, [~$42; ~%Rax]);InsFrag;InsFrag;InsFrag;InsFrag;InsFrag;InsFrag;InsFrag
     ;InsB0 (Movq, [~$(-24); stack_offset 0L]);InsFrag;InsFrag;InsFrag;InsFrag;InsFrag;InsFrag;InsFrag
@@ -253,7 +247,6 @@ let negq = test_machine
     ;InsB0 (Negq, [~%Rbx]);InsFrag;InsFrag;InsFrag;InsFrag;InsFrag;InsFrag;InsFrag
     ]
 
-
 let shl = test_machine
     [InsB0 (Movq, [~$1; ~%Rax]);InsFrag;InsFrag;InsFrag;InsFrag;InsFrag;InsFrag;InsFrag
     ;InsB0 (Movq, [~$2; stack_offset 0L]);InsFrag;InsFrag;InsFrag;InsFrag;InsFrag;InsFrag;InsFrag
@@ -261,7 +254,6 @@ let shl = test_machine
     ;InsB0 (Shlq, [~$2; ~%Rax]);InsFrag;InsFrag;InsFrag;InsFrag;InsFrag;InsFrag;InsFrag
     ;InsB0 (Shlq, [~%Rcx; stack_offset 0L]);InsFrag;InsFrag;InsFrag;InsFrag;InsFrag;InsFrag;InsFrag
     ]
-
 
 let imul = test_machine
     [InsB0 (Movq, [~$2; ~%Rax]);InsFrag;InsFrag;InsFrag;InsFrag;InsFrag;InsFrag;InsFrag
@@ -370,7 +362,6 @@ let cc_neg_2 = test_machine
   ;InsB0 (Negq, [~%Rax]);InsFrag;InsFrag;InsFrag;InsFrag;InsFrag;InsFrag;InsFrag
   ]
 
-
 let cc_cmp_1 = test_machine
   [InsB0 (Movq, [~$0; ~%Rax]);InsFrag;InsFrag;InsFrag;InsFrag;InsFrag;InsFrag;InsFrag
   ;InsB0 (Cmpq, [Imm (Lit 0x8000000000000000L); ~%Rax]);InsFrag;InsFrag;InsFrag;InsFrag;InsFrag;InsFrag;InsFrag
@@ -381,12 +372,10 @@ let cc_cmp_2 = test_machine
   ;InsB0 (Cmpq, [~$0; ~%Rax]);InsFrag;InsFrag;InsFrag;InsFrag;InsFrag;InsFrag;InsFrag
   ]
 
-
 let cc_imul_1 = test_machine
   [InsB0 (Movq, [~$(-1); ~%Rax]);InsFrag;InsFrag;InsFrag;InsFrag;InsFrag;InsFrag;InsFrag
   ;InsB0 (Imulq, [~$(-1); ~%Rax]);InsFrag;InsFrag;InsFrag;InsFrag;InsFrag;InsFrag;InsFrag
   ]
-
 
 let cc_and = test_machine
   [InsB0 (Movq, [Imm (Lit 0x0F0F0F0FL); ~%Rax]);InsFrag;InsFrag;InsFrag;InsFrag;InsFrag;InsFrag;InsFrag
@@ -397,7 +386,6 @@ let cc_or = test_machine
   [InsB0 (Movq, [~$0xFFFFFFF; ~%Rax]);InsFrag;InsFrag;InsFrag;InsFrag;InsFrag;InsFrag;InsFrag
   ;InsB0 (Orq, [~$0xF0F0F0F0; ~%Rax]);InsFrag;InsFrag;InsFrag;InsFrag;InsFrag;InsFrag;InsFrag
   ]
-
 
 let cc_set = test_machine
   [InsB0 (Set Neq, [~%Rax]);InsFrag;InsFrag;InsFrag;InsFrag;InsFrag;InsFrag;InsFrag]
@@ -430,8 +418,6 @@ let cc_lea = test_machine
   [InsB0 (Movq, [~$0x400600; ~%Rax]);InsFrag;InsFrag;InsFrag;InsFrag;InsFrag;InsFrag;InsFrag
   ;InsB0 (Movq, [~$0x408000; ~%Rcx]);InsFrag;InsFrag;InsFrag;InsFrag;InsFrag;InsFrag;InsFrag
   ;InsB0 (Leaq, [Ind2 Rax; Ind2 Rcx]);InsFrag;InsFrag;InsFrag;InsFrag;InsFrag;InsFrag;InsFrag]
-
-
 
 let hidden_condition_flag_set_tests = [
 
@@ -510,7 +496,6 @@ let hard_tests : suite = [
   GradedTest ("Hidden End-to-end Hard", 20,
               [])
 ]
-
 
 let manual_tests : suite = [
   GradedTest ("PartIIITestCase (manual)", 10, [

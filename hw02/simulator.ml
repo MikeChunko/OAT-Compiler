@@ -131,16 +131,19 @@ let sbytes_of_data : data -> sbyte list = function
   | Asciz s -> sbytes_of_string s
   | Quad (Lbl _) -> invalid_arg "sbytes_of_data: tried to serialize a label!"
 
-
 (* It might be useful to toggle printing of intermediate states of your
    simulator. *)
 let debug_simulator = ref false
 
 (* Interpret a condition code with respect to the given flags. *)
 let interp_cnd {fo; fs; fz} : cnd -> bool = fun x ->
-  failwith "interp_cnd unimplemented"
-
-
+  match x with
+  | Eq  -> fo
+  | Neq -> not fo
+  | Gt  -> not (fs <> fo) || fz
+  | Ge  -> not (fs <> fo)
+  | Lt  -> fs <> fo
+  | Le  -> (fs <> fo) || fz
 
 (* Maps an X86lite address into Some OCaml array index,
    or None if the address is not within the legal address space. *)

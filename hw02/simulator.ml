@@ -151,6 +151,55 @@ let map_addr (addr:quad) : int option =
   if addr < mem_bot || addr >= mem_top then None
   else Some (Int64.to_int (Int64.sub addr mem_bot))
 
+(* DEBUG *)
+open X86
+open Assert
+open Asm
+
+let sbyte_list (a : sbyte array) (start: int) : sbyte list =
+  Array.to_list (Array.sub a start 8)
+
+let stack_offset (i : quad) : operand = Ind3 (Lit i, Rsp)
+
+let test_machine (bs : sbyte list) : mach =
+  let mem = (Array.make mem_size (Byte '\x00')) in
+  Array.blit (Array.of_list bs) 0 mem 0 (List.length bs);
+  let regs = Array.make nregs 0L in
+  regs.(rind Rip) <- mem_bot;
+  regs.(rind Rsp) <- Int64.sub mem_top 8L;
+  { flags = {fo = false; fs = false; fz = false};
+    regs = regs;
+    mem = mem
+  }
+
+let negq = test_machine
+    [InsB0 (Movq, [~$42; ~%Rax]);InsFrag;InsFrag;InsFrag;InsFrag;InsFrag;InsFrag;InsFrag
+    ;InsB0 (Movq, [~$(-24); stack_offset 0L]);InsFrag;InsFrag;InsFrag;InsFrag;InsFrag;InsFrag;InsFrag
+    ;InsB0 (Movq, [Imm (Lit Int64.min_int); ~%Rbx]);InsFrag;InsFrag;InsFrag;InsFrag;InsFrag;InsFrag;InsFrag
+    ;InsB0 (Negq, [~%Rax]);InsFrag;InsFrag;InsFrag;InsFrag;InsFrag;InsFrag;InsFrag
+    ;InsB0 (Negq, [stack_offset 0L]);InsFrag;InsFrag;InsFrag;InsFrag;InsFrag;InsFrag;InsFrag
+    ;InsB0 (Negq, [~%Rbx]);InsFrag;InsFrag;InsFrag;InsFrag;InsFrag;InsFrag;InsFrag
+    ]
+
+(* END DEBUG *)
+
+(* Fetch the instruction at %rip and increment %rip by 4. *)
+let fetch_rip (m:mach) : ins =
+  let rip = (m.regs.(rind Rip)) in
+  match (map_addr rip) with
+  | None -> raise X86lite_segfault (* Invalid address. *)
+  | Some x ->
+    match m.mem.(x) with
+    | InsB0 i -> (m.regs.(rind Rip) <- (Int64.add rip 8L)); i
+    | _ -> raise X86lite_segfault (* Invalid instruction. *)
+
+(* Fetch the int64 value of an operand. *)
+let value (m:mach) (o:operand) : int64 =
+  match o with
+  | Imm (Lit x) -> x
+  | Reg x -> m.regs.(rind x)
+  | _ -> 0L
+
 (* Simulates one step of the machine:
     - fetch the instruction at %rip
     - compute the source and/or destination information from the operands
@@ -159,7 +208,32 @@ let map_addr (addr:quad) : int option =
     - set the condition flags
 *)
 let step (m:mach) : unit =
-  failwith "step unimplemented"
+  let open Int64_overflow in
+  match (fetch_rip m) with
+  | (Negq,  [d])    -> failwith "Negq"
+  | (Addq,  [s; d]) -> failwith "Addq"
+  | (Subq,  [s; d]) -> failwith "Subq"
+  | (Imulq, [s; d]) -> failwith "Imulq"
+  | (Incq,  [s])    -> failwith "Incq"
+  | (Decq,  [s])    -> failwith "Decq"
+  | (Notq,  [d])    -> failwith "Notq"
+  | (Andq,  [s; d]) -> failwith "Andq"
+  | (Orq,   [s; d]) -> failwith "Orq"
+  | (Xorq,  [s; d]) -> failwith "Xorq"
+  | (Sarq,  [a; d]) -> failwith "Sarq"
+  | (Shlq,  [a; d]) -> failwith "Shlq"
+  | (Shrq,  [a; d]) -> failwith "Shrq"
+  | (Set c, [ d])   -> failwith "Setb"
+  | (Leaq,  [i; d]) -> failwith "Leaq"
+  | (Movq,  [s; d]) -> failwith "Movq"
+  | (Pushq, [s])    -> failwith "Pushq"
+  | (Popq,  [d])    -> failwith "Popq"
+  | (Cmpq,  [s; d]) -> failwith "Cmpq"
+  | (Jmp,   [s])    -> failwith "Jmp"
+  | (Callq, [s])    -> failwith "Callq"
+  | (Retq,  [])     -> failwith "Retq"
+  | (J c,   [s])    -> failwith "J"
+  | _ -> failwith "Unimplemented instruction"
 
 (* Runs the machine until the rip register reaches a designated
    memory address. *)

@@ -211,25 +211,34 @@ let set_reg (m:mach) (r:reg) (v:int64) : int64 =
     - update the registers and/or memory appropriately
     - set the condition flags
 *)
+(* TODO:
+   - Use Int64_overflow to set condition flags
+   - Create function to properly set condition flags for logical instructions 
+   - Finish matching of other instructions
+     - These probably require custom functions instead of unary, binary *)
 let step (m:mach) : unit =
   let open Int64_overflow in
+  (* Helper functions: Take in a function and register(s),
+     performs the function based on register values,
+     stores it in the proper register,
+     and updates condition flags.  *)
   let unary f d = set_reg m d (f (get_value m d)).value in
   let binary f s d = set_reg m s (f (get_value m s) (get_value m d)).value in
   match (get_rip m) with
   | (Negq,  [d])    -> unary neg d; () (* Temporary *)
   | (Addq,  [s; d]) -> binary add s d; () (* Temporary *)
-  | (Subq,  [s; d]) -> failwith "Subq"
-  | (Imulq, [s; d]) -> failwith "Imulq"
-  | (Incq,  [s])    -> failwith "Incq"
-  | (Decq,  [s])    -> failwith "Decq"
-  | (Notq,  [d])    -> failwith "Notq"
-  | (Andq,  [s; d]) -> failwith "Andq"
-  | (Orq,   [s; d]) -> failwith "Orq"
-  | (Xorq,  [s; d]) -> failwith "Xorq"
-  | (Sarq,  [a; d]) -> failwith "Sarq"
-  | (Shlq,  [a; d]) -> failwith "Shlq"
-  | (Shrq,  [a; d]) -> failwith "Shrq"
-  | (Set c,  [d])   -> failwith "Setb"
+  | (Subq,  [s; d]) -> binary sub s d; () (* Temporary *)
+  | (Imulq, [s; d]) -> binary mul s d; () (* Temporary *)
+  | (Incq,  [s])    -> unary succ s; () (* Temporary *)
+  | (Decq,  [s])    -> unary pred s; () (* Temporary *)
+  | (Notq,  [d])    -> unary Int64.lognot s; () (* Temporary *)
+  | (Andq,  [s; d]) -> binary Int64.logand s d; () (* Temporary *)
+  | (Orq,   [s; d]) -> binary Int64.logor s d; () (* Temporary *)
+  | (Xorq,  [s; d]) -> binary Int64.logxor s d; () (* Temporary *)
+  | (Sarq,  [a; d]) -> binary Int64.shift_right d a; () (* Temporary *)
+  | (Shlq,  [a; d]) -> binary Int64.shift_left d a; () (* Temporary *)
+  | (Shrq,  [a; d]) -> binary Int64.shift_right_logical d a; () (* Temporary *)
+  | (Set c, [d])    -> failwith "Setb"
   | (Leaq,  [i; d]) -> failwith "Leaq"
   | (Movq,  [s; d]) -> failwith "Movq"
   | (Pushq, [s])    -> failwith "Pushq"

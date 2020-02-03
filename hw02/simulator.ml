@@ -183,8 +183,8 @@ let negq = test_machine
 
 (* END DEBUG *)
 
-(* Fetch the instruction at %rip and increment %rip by 4. *)
-let fetch_rip (m:mach) : ins =
+(* Get the instruction at %rip and increment %rip by 4. *)
+let get_rip (m:mach) : ins =
   let rip = (m.regs.(rind Rip)) in
   match (map_addr rip) with
   | None -> raise X86lite_segfault (* Invalid address. *)
@@ -193,12 +193,16 @@ let fetch_rip (m:mach) : ins =
     | InsB0 i -> (m.regs.(rind Rip) <- (Int64.add rip 8L)); i
     | _ -> raise X86lite_segfault (* Invalid instruction. *)
 
-(* Fetch the int64 value of an operand. *)
-let value (m:mach) (o:operand) : int64 =
+(* Get the int64 value of an operand. *)
+let get_value (m:mach) (o:operand) : int64 =
   match o with
   | Imm (Lit x) -> x
   | Reg x -> m.regs.(rind x)
-  | _ -> 0L
+  | _ -> raise X86lite_segfault
+
+(* Set the int64 value stored in a register. *)
+let set_reg (m:mach) (r:reg) (v:int64) : int64 =
+  (m.regs.(rind r) <- v); v
 
 (* Simulates one step of the machine:
     - fetch the instruction at %rip
@@ -209,9 +213,11 @@ let value (m:mach) (o:operand) : int64 =
 *)
 let step (m:mach) : unit =
   let open Int64_overflow in
-  match (fetch_rip m) with
-  | (Negq,  [d])    -> failwith "Negq"
-  | (Addq,  [s; d]) -> failwith "Addq"
+  let unary f d = set_reg m d (f (get_value m d)).value in
+  let binary f s d = set_reg m s (f (get_value m s) (get_value m d)).value in
+  match (get_rip m) with
+  | (Negq,  [d])    -> unary neg d; () (* Temporary *)
+  | (Addq,  [s; d]) -> binary add s d; () (* Temporary *)
   | (Subq,  [s; d]) -> failwith "Subq"
   | (Imulq, [s; d]) -> failwith "Imulq"
   | (Incq,  [s])    -> failwith "Incq"
@@ -223,7 +229,7 @@ let step (m:mach) : unit =
   | (Sarq,  [a; d]) -> failwith "Sarq"
   | (Shlq,  [a; d]) -> failwith "Shlq"
   | (Shrq,  [a; d]) -> failwith "Shrq"
-  | (Set c, [ d])   -> failwith "Setb"
+  | (Set c,  [d])   -> failwith "Setb"
   | (Leaq,  [i; d]) -> failwith "Leaq"
   | (Movq,  [s; d]) -> failwith "Movq"
   | (Pushq, [s])    -> failwith "Pushq"

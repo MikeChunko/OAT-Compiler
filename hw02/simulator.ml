@@ -183,15 +183,19 @@ let negq = test_machine
 
 (* END DEBUG *)
 
+(* Set the int64 value stored in a register. *)
+let set_reg (m:mach) (r:reg) (v:int64) : unit =
+  m.regs.(rind r) <- v
+
 (* Get the instruction at %rip and increment %rip by 4. *)
 let get_rip (m:mach) : ins =
-  let rip = (m.regs.(rind Rip)) in
+  let rip = m.regs.(rind Rip) in
   match (map_addr rip) with
   | None -> raise X86lite_segfault (* Invalid address. *)
   | Some x ->
-    match m.mem.(x) with
-    | InsB0 i -> (m.regs.(rind Rip) <- (Int64.add rip 8L)); i
-    | _ -> raise X86lite_segfault (* Invalid instruction. *)
+    (match m.mem.(x) with
+    | InsB0 i -> set_reg m Rip (Int64.add rip 8L); i
+    | _ -> raise X86lite_segfault) (* Invalid instruction. *)
 
 (* Get the int64 value of an operand. *)
 let get_value (m:mach) (o:operand) : int64 =
@@ -199,10 +203,6 @@ let get_value (m:mach) (o:operand) : int64 =
   | Imm (Lit x) -> x
   | Reg x -> m.regs.(rind x)
   | _ -> raise X86lite_segfault
-
-(* Set the int64 value stored in a register. *)
-let set_reg (m:mach) (r:reg) (v:int64) : int64 =
-  (m.regs.(rind r) <- v); v
 
 (* Simulates one step of the machine:
     - fetch the instruction at %rip

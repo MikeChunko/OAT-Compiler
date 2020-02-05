@@ -183,9 +183,13 @@ let negq = test_machine
 
 (* END DEBUG *)
 
-(* Set the int64 value stored in a register. *)
-let set_reg (m:mach) (r:reg) (v:int64) : unit =
-  m.regs.(rind r) <- v
+(* Set the int64 value stored in an operator (where applicable). 
+   If the operand cannot store a value, fail. *)
+let store_value (m:mach) (o:operand) (v:int64) : unit =
+  match o with
+  | Reg r -> m.regs.(rind r) <- v
+  | Imm i -> failwith "Cannot store to immediate"
+  | _ -> failwith "Unimplemented for other operands"
 
 (* Get the instruction at %rip and increment %rip by 4. *)
 let get_rip (m:mach) : ins =
@@ -194,7 +198,7 @@ let get_rip (m:mach) : ins =
   | None -> raise X86lite_segfault (* Invalid address. *)
   | Some x ->
     (match m.mem.(x) with
-    | InsB0 i -> set_reg m Rip (Int64.add rip 8L); i
+    | InsB0 i -> store_value m (Reg Rip) (Int64.add rip 8L); i
     | _ -> raise X86lite_segfault) (* Invalid instruction. *)
 
 (* Get the int64 value of an operand. *)
@@ -222,22 +226,22 @@ let step (m:mach) : unit =
      performs the function based on register values,
      stores it in the proper register,
      and updates condition flags.  *)
-  let unary f d = set_reg m d (f (get_value m d)).value in
-  let binary f s d = set_reg m s (f (get_value m s) (get_value m d)).value in
+  let unary f d = store_value m d (f (get_value m d)).value; () in
+  let binary f s d = store_value m s (f (get_value m s) (get_value m d)).value in
   match (get_rip m) with
-  | (Negq,  [d])    -> unary neg d; () (* Temporary *)
-  | (Addq,  [s; d]) -> binary add s d; () (* Temporary *)
-  | (Subq,  [s; d]) -> binary sub s d; () (* Temporary *)
-  | (Imulq, [s; d]) -> binary mul s d; () (* Temporary *)
-  | (Incq,  [s])    -> unary succ s; () (* Temporary *)
-  | (Decq,  [s])    -> unary pred s; () (* Temporary *)
-  | (Notq,  [d])    -> unary Int64.lognot s; () (* Temporary *)
-  | (Andq,  [s; d]) -> binary Int64.logand s d; () (* Temporary *)
-  | (Orq,   [s; d]) -> binary Int64.logor s d; () (* Temporary *)
-  | (Xorq,  [s; d]) -> binary Int64.logxor s d; () (* Temporary *)
-  | (Sarq,  [a; d]) -> binary Int64.shift_right d a; () (* Temporary *)
-  | (Shlq,  [a; d]) -> binary Int64.shift_left d a; () (* Temporary *)
-  | (Shrq,  [a; d]) -> binary Int64.shift_right_logical d a; () (* Temporary *)
+  | (Negq,  [d])    -> unary neg d (* Temporary *)
+  | (Addq,  [s; d]) -> binary add s d (* Temporary *)
+  | (Subq,  [s; d]) -> binary sub s d (* Temporary *)
+  | (Imulq, [s; d]) -> binary mul s d (* Temporary *)
+  | (Incq,  [s])    -> unary succ s (* Temporary *)
+  | (Decq,  [s])    -> unary pred s (* Temporary *)
+  | (Notq,  [s])    -> unary Int64.lognot s (* Temporary *)
+  | (Andq,  [s; d]) -> binary Int64.logand s d (* Temporary *)
+  | (Orq,   [s; d]) -> binary Int64.logor s d (* Temporary *)
+  | (Xorq,  [s; d]) -> binary Int64.logxor s d (* Temporary *)
+  | (Sarq,  [a; d]) -> binary Int64.shift_right d a (* Temporary *)
+  | (Shlq,  [a; d]) -> binary Int64.shift_left d a (* Temporary *)
+  | (Shrq,  [a; d]) -> binary Int64.shift_right_logical d a (* Temporary *)
   | (Set c, [d])    -> failwith "Setb"
   | (Leaq,  [i; d]) -> failwith "Leaq"
   | (Movq,  [s; d]) -> failwith "Movq"

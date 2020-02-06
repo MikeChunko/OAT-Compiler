@@ -183,7 +183,7 @@ let negq = test_machine
 
 (* END DEBUG *)
 
-(* Set the int64 value stored in an operator (where applicable). 
+(* Set the int64 value stored in an operator (where applicable).
    If the operand cannot store a value, fail. *)
 let store_value (m:mach) (o:operand) (v:int64) : unit =
   match o with
@@ -217,7 +217,7 @@ let get_value (m:mach) (o:operand) : int64 =
 *)
 (* TODO:
    - Use Int64_overflow to set condition flags
-   - Create function to properly set condition flags for logical instructions 
+   - Create function to properly set condition flags for logical instructions
    - Finish matching of other instructions
      - These probably require custom functions instead of unary, binary *)
 let step (m:mach) : unit =
@@ -235,13 +235,13 @@ let step (m:mach) : unit =
   | (Imulq, [s; d]) -> binary mul s d (* Temporary *)
   | (Incq,  [s])    -> unary succ s (* Temporary *)
   | (Decq,  [s])    -> unary pred s (* Temporary *)
-  | (Notq,  [s])    -> unary Int64.lognot s (* Temporary *)
+  (*| (Notq,  [s])    -> unary Int64.lognot s (* Temporary *)
   | (Andq,  [s; d]) -> binary Int64.logand s d (* Temporary *)
   | (Orq,   [s; d]) -> binary Int64.logor s d (* Temporary *)
   | (Xorq,  [s; d]) -> binary Int64.logxor s d (* Temporary *)
   | (Sarq,  [a; d]) -> binary Int64.shift_right d a (* Temporary *)
   | (Shlq,  [a; d]) -> binary Int64.shift_left d a (* Temporary *)
-  | (Shrq,  [a; d]) -> binary Int64.shift_right_logical d a (* Temporary *)
+  | (Shrq,  [a; d]) -> binary Int64.shift_right_logical d a (* Temporary *)*)
   | (Set c, [d])    -> failwith "Setb"
   | (Leaq,  [i; d]) -> failwith "Leaq"
   | (Movq,  [s; d]) -> failwith "Movq"
@@ -301,9 +301,19 @@ let assemble (p:prog) : exec =
       - initializes rsp to the last word in memory
       - the other registers are initialized to 0
     - the condition code flags start as 'false'
-
-  Hint: The Array.make, Array.blit, and Array.of_list library functions
-  may be of use.
 *)
 let load {entry; text_pos; data_pos; text_seg; data_seg} : mach =
-  failwith "load unimplemented"
+  let open Array in
+  let open Int64 in
+  let flags = {fo = false; fs = false; fz = false} in
+  let regs = make 17 0L in
+  regs.(rind Rip) <- entry;
+  regs.(rind Rsp) <- sub mem_top 8L; (* The highest address in mem *)
+  let map_addr addr = to_int (sub addr mem_bot) in (* Avoid pattern-matching option *)
+  let mem = make mem_size (Byte '\x00') in
+  let text_arr = of_list text_seg in
+  blit text_arr 0 mem (map_addr text_pos) (length text_arr);
+  let data_arr = of_list data_seg in
+  blit data_arr 0 mem (map_addr data_pos) (length data_arr);
+  blit (of_list (sbytes_of_int64 exit_addr)) 0 mem (mem_size - 8) 8;
+  {flags; regs; mem}

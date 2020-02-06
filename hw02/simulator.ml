@@ -235,13 +235,13 @@ let step (m:mach) : unit =
   | (Imulq, [s; d]) -> binary mul s d (* Temporary *)
   | (Incq,  [s])    -> unary succ s (* Temporary *)
   | (Decq,  [s])    -> unary pred s (* Temporary *)
-  (*| (Notq,  [s])    -> unary Int64.lognot s (* Temporary *)
+  | (Notq,  [s])    -> unary Int64.lognot s (* Temporary *)
   | (Andq,  [s; d]) -> binary Int64.logand s d (* Temporary *)
   | (Orq,   [s; d]) -> binary Int64.logor s d (* Temporary *)
   | (Xorq,  [s; d]) -> binary Int64.logxor s d (* Temporary *)
   | (Sarq,  [a; d]) -> binary Int64.shift_right d a (* Temporary *)
   | (Shlq,  [a; d]) -> binary Int64.shift_left d a (* Temporary *)
-  | (Shrq,  [a; d]) -> binary Int64.shift_right_logical d a (* Temporary *)*)
+  | (Shrq,  [a; d]) -> binary Int64.shift_right_logical d a (* Temporary *)
   | (Set c, [d])    -> failwith "Setb"
   | (Leaq,  [i; d]) -> failwith "Leaq"
   | (Movq,  [s; d]) -> failwith "Movq"
@@ -280,17 +280,27 @@ exception Redefined_sym of lbl
    - separate the text and data segments
    - compute the size of each segment
       Note: the size of an Asciz string section is (1 + the string length)
-
    - resolve the labels to concrete addresses and 'patch' the instructions to
      replace Lbl values with the corresponding Imm values.
-
    - the text segment starts at the lowest address
    - the data segment starts after the text segment
 
   HINT: List.fold_left and List.fold_right are your friends.
  *)
+(* A representation of the executable
+type exec = { entry    : quad              (* address of the entry point *)
+            ; text_pos : quad              (* starting address of the code *)
+            ; data_pos : quad              (* starting address of the data *)
+            ; text_seg : sbyte list        (* contents of the text segment *)
+            ; data_seg : sbyte list        (* contents of the data segment *)
+            }*)
 let assemble (p:prog) : exec =
-  failwith "assemble unimplemented"
+  let entry = 0L in (* Temporary *)
+  let text_pos = mem_bot in
+  let data_pos = 0L in (* Temporary *)
+  let text_seg = [] in (* Temporary *)
+  let data_seg = [] in (* Temporary *)
+  {entry; text_pos; data_pos; text_seg; data_seg}
 
 (* Convert an object file into an executable machine state.
     - allocate the mem array

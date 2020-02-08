@@ -136,8 +136,7 @@ let sbytes_of_data : data -> sbyte list = function
 let debug_simulator = ref false
 
 (* Interpret a condition code with respect to the given flags. *)
-let interp_cnd {fo; fs; fz} : cnd -> bool = fun x ->
-  match x with
+let interp_cnd {fo; fs; fz} : cnd -> bool = function
   | Eq  -> fz
   | Neq -> not fz
   | Gt  -> (fs = fo) && not fz
@@ -235,13 +234,13 @@ let step (m:mach) : unit =
   | (Imulq, [s; d]) -> binary mul s d (* Temporary *)
   | (Incq,  [s])    -> unary succ s (* Temporary *)
   | (Decq,  [s])    -> unary pred s (* Temporary *)
-  | (Notq,  [s])    -> unary Int64.lognot s (* Temporary *)
+  (*| (Notq,  [s])    -> unary Int64.lognot s (* Temporary *)
   | (Andq,  [s; d]) -> binary Int64.logand s d (* Temporary *)
   | (Orq,   [s; d]) -> binary Int64.logor s d (* Temporary *)
   | (Xorq,  [s; d]) -> binary Int64.logxor s d (* Temporary *)
   | (Sarq,  [a; d]) -> binary Int64.shift_right d a (* Temporary *)
   | (Shlq,  [a; d]) -> binary Int64.shift_left d a (* Temporary *)
-  | (Shrq,  [a; d]) -> binary Int64.shift_right_logical d a (* Temporary *)
+  | (Shrq,  [a; d]) -> binary Int64.shift_right_logical d a (* Temporary *)*)
   | (Set c, [d])    -> failwith "Setb"
   | (Leaq,  [i; d]) -> failwith "Leaq"
   | (Movq,  [s; d]) -> failwith "Movq"
@@ -295,6 +294,19 @@ type exec = { entry    : quad              (* address of the entry point *)
             ; data_seg : sbyte list        (* contents of the data segment *)
             }*)
 let assemble (p:prog) : exec =
+  let data_length = function
+    | Asciz s -> String.length s + 1
+    | Quad _ -> 8
+    | _ -> failwith "Invalid data type" in
+  let symbol_table : (lbl, quad) Hashtbl.t = Hashtbl.create 100 in
+  let symbol_add (label:lbl) (pos:quad) : unit =
+    if Hashtbl.mem symbol_table label
+    then raise (Redefined_sym label)
+    else Hashtbl.add symbol_table label pos in
+  let symbol_lookup (label:lbl) : quad =
+    if Hashtbl.mem symbol_table label
+    then Hashtbl.find symbol_table label
+    else raise (Undefined_sym label) in
   let entry = 0L in (* Temporary *)
   let text_pos = mem_bot in
   let data_pos = 0L in (* Temporary *)

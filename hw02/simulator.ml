@@ -1,4 +1,5 @@
 (* X86lite Simulator *)
+(* NOTE: Run utop -I _build -I _build/x86 -I _build/util *)
 
 (* See the documentation in the X86lite specification, available on the
    course web pages, for a detailed explanation of the instruction
@@ -111,7 +112,7 @@ let int64_of_sbytes (bs:sbyte list) : int64 =
 let sbytes_of_string (s:string) : sbyte list =
   let rec loop acc = function
     | i when i < 0 -> acc
-    | i -> loop (Byte s.[i]::acc) (pred i)
+    | i -> loop (Byte s.[i]::acc) (Pervasives.pred i)
   in
   loop [Byte '\x00'] @@ String.length s - 1
 
@@ -283,36 +284,61 @@ exception Redefined_sym of lbl
      replace Lbl values with the corresponding Imm values.
    - the text segment starts at the lowest address
    - the data segment starts after the text segment
-
-  HINT: List.fold_left and List.fold_right are your friends.
  *)
-(* A representation of the executable
-type exec = { entry    : quad              (* address of the entry point *)
-            ; text_pos : quad              (* starting address of the code *)
-            ; data_pos : quad              (* starting address of the data *)
-            ; text_seg : sbyte list        (* contents of the text segment *)
-            ; data_seg : sbyte list        (* contents of the data segment *)
-            }*)
 let assemble (p:prog) : exec =
+  let open List in
+  let open Int64 in
   let data_length = function
     | Asciz s -> String.length s + 1
     | Quad _ -> 8
     | _ -> failwith "Invalid data type" in
   let symbol_table : (lbl, quad) Hashtbl.t = Hashtbl.create 100 in
   let symbol_add (label:lbl) (pos:quad) : unit =
-    if Hashtbl.mem symbol_table label
-    then raise (Redefined_sym label)
+    if Hashtbl.mem symbol_table label then raise (Redefined_sym label)
     else Hashtbl.add symbol_table label pos in
   let symbol_lookup (label:lbl) : quad =
-    if Hashtbl.mem symbol_table label
-    then Hashtbl.find symbol_table label
+    if Hashtbl.mem symbol_table label then Hashtbl.find symbol_table label
     else raise (Undefined_sym label) in
-  let entry = 0L in (* Temporary *)
-  let text_pos = mem_bot in
-  let data_pos = 0L in (* Temporary *)
-  let text_seg = [] in (* Temporary *)
-  let data_seg = [] in (* Temporary *)
-  {entry; text_pos; data_pos; text_seg; data_seg}
+  let symbol_exist (label:lbl) : bool =
+    Hashtbl.mem symbol_table label in
+  let fix_imm : imm -> imm = function
+    | Lbl l -> Lit (symbol_lookup l)
+    | i -> i in
+  let fix_operand : operand -> operand = function
+    | Imm i -> Imm (fix_imm i)
+    | Ind1 i -> Ind1 (fix_imm i)
+    | Ind3 (i, r) -> Ind3(fix_imm i, r)
+    | op -> op in
+  let fix_ins (opcode,operand:ins) : ins =
+    (opcode, map fix_operand operand) in
+  let fix_data : data -> data = function
+    | Quad i -> Quad (fix_imm i)
+    | d -> d in
+  let fix : asm -> asm = function
+    | Text l -> Text (map fix_ins l)
+    | Data l -> Data (map fix_data l) in
+  let text_pos = ref mem_bot in
+  let data_pos = ref mem_bot in
+  let elem_init (e:elem) : unit =
+    match e.asm with
+    | Text l -> symbol_add e.lbl !text_pos;
+                text_pos := add !text_pos (mul ins_size (of_int (length l)));
+                data_pos := add !data_pos (mul ins_size (of_int (length l)))
+    | Data l -> symbol_add e.lbl !text_pos;
+                text_pos := add !text_pos (of_int (fold_left (fun a b -> a + data_length b) 0 l)) in
+  let start : exec = 
+    iter elem_init p; (* Set up symbol table and positions. *)
+    { entry = if symbol_exist "main" then symbol_lookup "main"
+              else raise (Undefined_sym "main")
+    ; text_pos = mem_bot
+    ; data_pos = !data_pos
+    ; text_seg = []
+    ; data_seg = []} in
+  let assemble_step (a:asm) (e:exec) : exec =
+    match (fix a) with
+    | Text l -> {e with text_seg = concat (map sbytes_of_ins l) @ e.text_seg}
+    | Data l -> {e with data_seg = concat (map sbytes_of_data l) @ e.data_seg} in
+  fold_right assemble_step (map (fun e -> e.asm) p) start
 
 (* Convert an object file into an executable machine state.
     - allocate the mem array

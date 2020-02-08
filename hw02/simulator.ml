@@ -1,15 +1,10 @@
 (* X86lite Simulator *)
-(* NOTE: Run utop -I _build -I _build/x86 -I _build/util *)
-
-(* See the documentation in the X86lite specification, available on the
-   course web pages, for a detailed explanation of the instruction
-   semantics.
-*)
+(* Author: Michael Chunko, Dominick DiMaggio                                  *)
+(* Pledge: I pledge my honor that I have abided by the Stevens Honor System.  *)
 
 open X86
 
 (* simulator machine state -------------------------------------------------- *)
-
 let mem_bot = 0x400000L          (* lowest valid address *)
 let mem_top = 0x410000L          (* one past the last byte in memory *)
 let mem_size = Int64.to_int (Int64.sub mem_top mem_bot)
@@ -33,7 +28,7 @@ exception X86lite_segfault
    elements, which aren't valid data.
 
    For example, the two-instruction sequence:
-        at&t syntax             ocaml syntax
+      at&t syntax             ocaml syntax
       movq %rdi, (%rsp)       Movq,  [~%Rdi; Ind2 Rsp]
       decq %rdi               Decq,  [~%Rdi]
 
@@ -104,16 +99,14 @@ let int64_of_sbytes (bs:sbyte list) : int64 =
   let open Int64 in
   let f b i = match b with
     | Byte c -> logor (shift_left i 8) (c |> code |> of_int)
-    | _ -> 0L
-  in
+    | _ -> 0L in
   List.fold_right f bs 0L
 
 (* Convert a string to its sbyte representation *)
 let sbytes_of_string (s:string) : sbyte list =
   let rec loop acc = function
     | i when i < 0 -> acc
-    | i -> loop (Byte s.[i]::acc) (Pervasives.pred i)
-  in
+    | i -> loop (Byte s.[i]::acc) (Pervasives.pred i) in
   loop [Byte '\x00'] @@ String.length s - 1
 
 (* Serialize an instruction to sbytes *)
@@ -121,8 +114,7 @@ let sbytes_of_ins (op, args:ins) : sbyte list =
   let check = function
     | Imm (Lbl _) | Ind1 (Lbl _) | Ind3 (Lbl _, _) ->
       invalid_arg "sbytes_of_ins: tried to serialize a label!"
-    | o -> ()
-  in
+    | o -> () in
   List.iter check args;
   [InsB0 (op, args); InsFrag; InsFrag; InsFrag; InsFrag; InsFrag; InsFrag; InsFrag]
 
@@ -150,38 +142,6 @@ let interp_cnd {fo; fs; fz} : cnd -> bool = function
 let map_addr (addr:quad) : int option =
   if addr < mem_bot || addr >= mem_top then None
   else Some (Int64.to_int (Int64.sub addr mem_bot))
-
-(* DEBUG *)
-open X86
-open Assert
-open Asm
-
-let sbyte_list (a : sbyte array) (start: int) : sbyte list =
-  Array.to_list (Array.sub a start 8)
-
-let stack_offset (i : quad) : operand = Ind3 (Lit i, Rsp)
-
-let test_machine (bs : sbyte list) : mach =
-  let mem = (Array.make mem_size (Byte '\x00')) in
-  Array.blit (Array.of_list bs) 0 mem 0 (List.length bs);
-  let regs = Array.make nregs 0L in
-  regs.(rind Rip) <- mem_bot;
-  regs.(rind Rsp) <- Int64.sub mem_top 8L;
-  { flags = {fo = false; fs = false; fz = false};
-    regs = regs;
-    mem = mem
-  }
-
-let negq = test_machine
-    [InsB0 (Movq, [~$42; ~%Rax]);InsFrag;InsFrag;InsFrag;InsFrag;InsFrag;InsFrag;InsFrag
-    ;InsB0 (Movq, [~$(-24); stack_offset 0L]);InsFrag;InsFrag;InsFrag;InsFrag;InsFrag;InsFrag;InsFrag
-    ;InsB0 (Movq, [Imm (Lit Int64.min_int); ~%Rbx]);InsFrag;InsFrag;InsFrag;InsFrag;InsFrag;InsFrag;InsFrag
-    ;InsB0 (Negq, [~%Rax]);InsFrag;InsFrag;InsFrag;InsFrag;InsFrag;InsFrag;InsFrag
-    ;InsB0 (Negq, [stack_offset 0L]);InsFrag;InsFrag;InsFrag;InsFrag;InsFrag;InsFrag;InsFrag
-    ;InsB0 (Negq, [~%Rbx]);InsFrag;InsFrag;InsFrag;InsFrag;InsFrag;InsFrag;InsFrag
-    ]
-
-(* END DEBUG *)
 
 (* Set the int64 value stored in an operator (where applicable).
    If the operand cannot store a value, fail. *)
@@ -260,7 +220,7 @@ let run (m:mach) : int64 =
   while m.regs.(rind Rip) <> exit_addr do step m done;
   m.regs.(rind Rax)
 
-(* assembling and linking --------------------------------------------------- *)
+(* Assembling and linking --------------------------------------------------- *)
 
 (* A representation of the executable *)
 type exec = { entry    : quad              (* address of the entry point *)
@@ -281,7 +241,7 @@ exception Redefined_sym of lbl
    - compute the size of each segment
       Note: the size of an Asciz string section is (1 + the string length)
    - resolve the labels to concrete addresses and 'patch' the instructions to
-     replace Lbl values with the corresponding Imm values.
+      replace Lbl values with the corresponding Imm values.
    - the text segment starts at the lowest address
    - the data segment starts after the text segment
  *)
@@ -290,8 +250,7 @@ let assemble (p:prog) : exec =
   let open Int64 in
   let data_length = function
     | Asciz s -> String.length s + 1
-    | Quad _ -> 8
-    | _ -> failwith "Invalid data type" in
+    | Quad _ -> 8 in
   let symbol_table : (lbl, quad) Hashtbl.t = Hashtbl.create 100 in
   let symbol_add (label:lbl) (pos:quad) : unit =
     if Hashtbl.mem symbol_table label then raise (Redefined_sym label)
@@ -326,7 +285,7 @@ let assemble (p:prog) : exec =
                 data_pos := add !data_pos (mul ins_size (of_int (length l)))
     | Data l -> symbol_add e.lbl !text_pos;
                 text_pos := add !text_pos (of_int (fold_left (fun a b -> a + data_length b) 0 l)) in
-  let start : exec = 
+  let start : exec =
     iter elem_init p; (* Set up symbol table and positions. *)
     { entry = if symbol_exist "main" then symbol_lookup "main"
               else raise (Undefined_sym "main")

@@ -1,7 +1,6 @@
 (* X86lite Simulator *)
 (* Author: Michael Chunko, Dominick DiMaggio                                  *)
 (* Pledge: I pledge my honor that I have abided by the Stevens Honor System.  *)
-
 open X86
 
 (* simulator machine state -------------------------------------------------- *)
@@ -34,7 +33,6 @@ exception X86lite_segfault
 
    is represented by the following elements of the mem array (starting
    at address 0x400000):
-
        0x400000 :  InsB0 (Movq,  [~%Rdi; Ind2 Rsp])
        0x400001 :  InsFrag
        0x400002 :  InsFrag
@@ -56,7 +54,7 @@ type sbyte = InsB0 of ins       (* 1st byte of an instruction *)
            | InsFrag            (* 2nd - 7th bytes of an instruction *)
            | Byte of char       (* non-instruction byte *)
 
-(* memory maps addresses to symbolic bytes *)
+(* Memory maps addresses to symbolic bytes *)
 type mem = sbyte array
 
 (* Flags for condition codes *)
@@ -74,7 +72,7 @@ type mach = { flags : flags
             ; mem : mem
             }
 
-(* simulator helper functions ----------------------------------------------- *)
+(* Simulator helper functions ----------------------------------------------- *)
 
 (* The index of a register in the regs array *)
 let rind : reg -> int = function
@@ -83,8 +81,6 @@ let rind : reg -> int = function
   | Rsi -> 4  | Rdi -> 5  | Rbp -> 6  | Rsp -> 7
   | R08 -> 8  | R09 -> 9  | R10 -> 10 | R11 -> 11
   | R12 -> 12 | R13 -> 13 | R14 -> 14 | R15 -> 15
-
-(* Helper functions for reading/writing sbytes *)
 
 (* Convert an int64 to its sbyte representation *)
 let sbytes_of_int64 (i:int64) : sbyte list =
@@ -155,29 +151,30 @@ let store_value (m:mach) (o:operand) (v:int64) : unit =
 let get_rip (m:mach) : ins =
   let rip = m.regs.(rind Rip) in
   match (map_addr rip) with
-  | None -> raise X86lite_segfault (* Invalid address. *)
+  | None   -> raise X86lite_segfault (* Invalid address. *)
   | Some x ->
     (match m.mem.(x) with
     | InsB0 i -> store_value m (Reg Rip) (Int64.add rip 8L); i
-    | _ -> raise X86lite_segfault) (* Invalid instruction. *)
+    | _       -> raise X86lite_segfault) (* Invalid instruction. *)
+
+(* Gets memory address through Ind operands *)
+let parse_ind (m:mach) : operand -> int64 = function
+  | Ind1 (Lit i)    -> i
+  | Ind2 r          -> m.regs.(rind r)
+  | Ind3 (Lit i, r) -> Int64.add m.regs.(rind r) i
+  | _               -> invalid_arg "parse_ind: Must be called with Ind"
 
 (* Get the int64 value of an operand. *)
 let get_value (m:mach) (o:operand) : int64 =
   match o with
   | Imm (Lit x) -> x
-  | Reg x -> m.regs.(rind x)
-  | _ -> raise X86lite_segfault
+  | Reg x       -> m.regs.(rind x)
+  | Ind1 (Lit _) | Ind2 _ | Ind3 (Lit _, _) -> parse_ind m o
+  | _           -> invalid_arg "Cannot get value of label"
 
 (* Wraps get_value and returns an int for bit shifting *)
 let get_shamt (m:mach) (o:operand) : int =
   Int64.to_int (get_value m o)
-
-(* Gets memory address through Ind operands *)
-let parse_ind (m: mach) : operand -> int64 = function
-  | Ind1 (Lit i)    -> i
-  | Ind2 r          -> m.regs.(rind r)
-  | Ind3 (Lit i, r) -> Int64.add m.regs.(rind r) i
-  | _               -> invalid_arg "parse_ind: Must be called with Ind"
 
 (* Simulates one step of the machine:
     - fetch the instruction at %rip
@@ -186,17 +183,11 @@ let parse_ind (m: mach) : operand -> int64 = function
     - update the registers and/or memory appropriately
     - set the condition flags
 *)
-(* TODO:
-   - Use Int64_overflow to set condition flags
-   - Create function to properly set condition flags for logical instructions 
-   - Finish matching of other instructions
-     - These probably require custom functions instead of unary, binary *)
 let step (m:mach) : unit =
   let open Int64_overflow in
   (* Helper functions: Take in a function and register(s),
      performs the function based on register values,
-     stores it in the proper register,
-     and updates condition flags.  *)
+     stores it in the proper register, and updates condition flags.  *)
   let unary f d = let oflow = (f (get_value m d)) in (
     m.flags.fo <- oflow.overflow; m.flags.fs <- oflow.value < 0L; m.flags.fz <- oflow.value = 0L;
     store_value m d oflow.value
@@ -269,7 +260,7 @@ let step (m:mach) : unit =
   | (Callq, [s])    -> push (Reg Rip); jump s
   | (Retq,  [])     -> pop (Reg Rip)
   | (J c,   [s])    -> if interp_cnd m.flags c then jump s
-  | _ -> failwith "Unimplemented instruction"
+  | _               -> invalid_arg "Unimplemented instruction"
 
 (* Runs the machine until the rip register reaches a designated
    memory address. *)
@@ -308,6 +299,7 @@ let assemble (p:prog) : exec =
   let data_length = function
     | Asciz s -> String.length s + 1
     | Quad _ -> 8 in
+  (* Symbol table representation and helper functions. *)
   let symbol_table : (lbl, quad) Hashtbl.t = Hashtbl.create 100 in
   let symbol_add (label:lbl) (pos:quad) : unit =
     if Hashtbl.mem symbol_table label then raise (Redefined_sym label)
@@ -317,6 +309,7 @@ let assemble (p:prog) : exec =
     else raise (Undefined_sym label) in
   let symbol_exist (label:lbl) : bool =
     Hashtbl.mem symbol_table label in
+  (* "Fix" instructions (Replace labels with their correct values). *)
   let fix_imm : imm -> imm = function
     | Lbl l -> Lit (symbol_lookup l)
     | i -> i in
@@ -335,6 +328,7 @@ let assemble (p:prog) : exec =
     | Data l -> Data (map fix_data l) in
   let text_pos = ref mem_bot in
   let data_pos = ref mem_bot in
+  (* Find the position of sections, add labels to the symbol table. *)
   let elem_init (e:elem) : unit =
     match e.asm with
     | Text l -> symbol_add e.lbl !text_pos;
@@ -343,7 +337,7 @@ let assemble (p:prog) : exec =
     | Data l -> symbol_add e.lbl !text_pos;
                 text_pos := add !text_pos (of_int (fold_left (fun a b -> a + data_length b) 0 l)) in
   let start : exec =
-    iter elem_init p; (* Set up symbol table and positions. *)
+    iter elem_init p;
     { entry = if symbol_exist "main" then symbol_lookup "main"
               else raise (Undefined_sym "main")
     ; text_pos = mem_bot

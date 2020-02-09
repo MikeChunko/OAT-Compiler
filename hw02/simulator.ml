@@ -241,7 +241,7 @@ let step (m:mach) : unit =
   let pop d = (* Return the latest stack value and increase pointer by 8 bytes *)
     store_value m (get_value m (Ind2 Rsp)) d;
     m.regs.(rind Rsp) <- Int64.add m.regs.(rind Rsp) 8L in
-  let cmp f s d = let oflow = (f (get_value m s) (get_value m d)) in
+  let cmp f s d = let oflow = (f (get_value m d) (get_value m s)) in
     set_cnd_oflow m oflow in
   let jump s = store_value m (get_value m s) (Reg Rip) in
   match (get_rip m) with

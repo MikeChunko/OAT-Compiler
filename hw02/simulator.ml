@@ -149,13 +149,24 @@ let map_addr (addr:quad) : int option =
   if addr < mem_bot || addr >= mem_top then None
   else Some (Int64.to_int (Int64.sub addr mem_bot))
 
+let get_addr (addr:quad) : int =
+  match (map_addr addr) with
+  | Some v -> v
+  | None -> 0
+
 (* Set the int64 value stored in an operator (where applicable).
    If the operand cannot store a value, fail. *)
 let store_value (m:mach) (o:operand) (v:int64) : unit =
+  let store (m:mach) (addr:quad) (v:int64) : unit =
+    let open Array in
+    blit (of_list (sbytes_of_int64 v)) 0 m.mem (get_addr addr) 8 in
   match o with
-  | Reg r -> m.regs.(rind r) <- v
-  | Imm i -> failwith "Cannot store to immediate"
-  | _ -> failwith "Unimplemented for other operands"
+  | Reg r           -> m.regs.(rind r) <- v
+  | Imm i           -> failwith "Cannot store to immediate"
+  | Ind1 (Lit i)    -> store m i v
+  | Ind2 (r)        -> store m (m.regs.(rind r)) v
+  | Ind3 (Lit i, r) -> store m (Int64.add i m.regs.(rind r)) v
+  | _               -> invalid_arg "Cannot store to label"
 
 (* Get the instruction at %rip and increment %rip by 4. *)
 let get_rip (m:mach) : ins =
@@ -167,20 +178,18 @@ let get_rip (m:mach) : ins =
     | InsB0 i -> store_value m (Reg Rip) (Int64.add rip 8L); i
     | _       -> raise X86lite_segfault (* Invalid instruction. *)
 
-(* Gets memory address through Ind operands *)
-let parse_ind (m:mach) : operand -> int64 = function
-  | Ind1 (Lit i)    -> i
-  | Ind2 r          -> m.regs.(rind r)
-  | Ind3 (Lit i, r) -> Int64.add m.regs.(rind r) i
-  | _               -> invalid_arg "parse_ind: Must be called with Ind"
-
-(* Get the int64 value of an operand. *)
-let get_value (m:mach) (o:operand) : int64 =
-  match o with
-  | Imm (Lit x) -> x
-  | Reg x       -> m.regs.(rind x)
-  | Ind1 (Lit _) | Ind2 _ | Ind3 (Lit _, _) -> parse_ind m o
-  | _           -> invalid_arg "Cannot get value of a label"
+(* Get the int64 value/address of an operand. *)
+let get_value (m:mach) : operand -> int64 = 
+  let get (m:mach) (v:int) : int64 =
+    let open Array in
+    int64_of_sbytes (to_list (sub m.mem v 8))
+  in function
+  | Imm (Lit i)     -> i
+  | Reg r           -> m.regs.(rind r)
+  | Ind1 (Lit i)    -> get m (get_addr i)
+  | Ind2 r          -> get m (get_addr m.regs.(rind r))
+  | Ind3 (Lit i, r) -> get m ((Int64.to_int i) + (get_addr m.regs.(rind r)))
+  | _               -> invalid_arg "Cannot get value of a label"
 
 (* Wraps get_value and returns an int for bit shifting *)
 let get_shamt (m:mach) (o:operand) : int =
@@ -204,10 +213,10 @@ let step (m:mach) : unit =
   let logic_unary f d = let value = (f (get_value m d)) in
     set_cnd_logic m value;
     store_value m d value in
-  let binary f s d = let oflow = (f (get_value m s) (get_value m d)) in
+  let binary f s d = let oflow = (f (get_value m d) (get_value m s)) in
     set_cnd_oflow m oflow;
     store_value m d oflow.value in
-  let logic_binary f s d = let value = (f (get_value m s) (get_value m d)) in
+  let logic_binary f s d = let value = (f (get_value m d) (get_value m s)) in
     set_cnd_logic m value;
     store_value m d value in
   (* Helper functions for specific instructions. *)
@@ -251,7 +260,7 @@ let step (m:mach) : unit =
   | (Shlq,  [a; d]) -> shift shift_left a d Shlq
   | (Shrq,  [a; d]) -> shift shift_right_logical a d Shrq
   | (Set c, [d])    -> store_value m d (replace_low_byte (get_value m d) (if interp_cnd m.flags c then 1L else 0L))
-  | (Leaq,  [i; d]) -> store_value m d (parse_ind m i)
+  | (Leaq,  [i; d]) -> store_value m d (get_value m i)
   | (Movq,  [s; d]) -> store_value m d (get_value m s)
   | (Pushq, [s])    -> push s
   | (Popq,  [d])    -> pop d

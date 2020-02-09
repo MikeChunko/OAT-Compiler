@@ -152,15 +152,15 @@ let map_addr (addr:quad) : int option =
 let get_addr (addr:quad) : int =
   match (map_addr addr) with
   | Some v -> v
-  | None -> 0
+  | None   -> invalid_arg "Invalid address"
 
 (* Set the int64 value stored in an operator (where applicable).
    If the operand cannot store a value, fail. *)
-let store_value (m:mach) (o:operand) (v:int64) : unit =
+let store_value (m:mach) (v:int64) : operand -> unit =
   let store (m:mach) (addr:quad) (v:int64) : unit =
     let open Array in
-    blit (of_list (sbytes_of_int64 v)) 0 m.mem (get_addr addr) 8 in
-  match o with
+    blit (of_list (sbytes_of_int64 v)) 0 m.mem (get_addr addr) 8 
+  in function
   | Reg r           -> m.regs.(rind r) <- v
   | Imm i           -> failwith "Cannot store to immediate"
   | Ind1 (Lit i)    -> store m i v
@@ -170,12 +170,11 @@ let store_value (m:mach) (o:operand) (v:int64) : unit =
 
 (* Get the instruction at %rip and increment %rip by 4. *)
 let get_rip (m:mach) : ins =
-  let rip = m.regs.(rind Rip) in
-  match (map_addr rip) with
+  match (map_addr m.regs.(rind Rip)) with
   | None   -> raise X86lite_segfault (* Invalid address. *)
   | Some x ->
     match m.mem.(x) with
-    | InsB0 i -> store_value m (Reg Rip) (Int64.add rip 8L); i
+    | InsB0 i -> store_value m (Int64.add m.regs.(rind Rip) 8L) (Reg Rip); i
     | _       -> raise X86lite_segfault (* Invalid instruction. *)
 
 (* Get the int64 value/address of an operand. *)
@@ -209,16 +208,16 @@ let step (m:mach) : unit =
      store in the proper register, and update condition flags.  *)
   let unary f d = let oflow = (f (get_value m d)) in
     set_cnd_oflow m oflow;
-    store_value m d oflow.value in
+    store_value m oflow.value d in
   let logic_unary f d = let value = (f (get_value m d)) in
     set_cnd_logic m value;
-    store_value m d value in
+    store_value m value d in
   let binary f s d = let oflow = (f (get_value m d) (get_value m s)) in
     set_cnd_oflow m oflow;
-    store_value m d oflow.value in
+    store_value m oflow.value d in
   let logic_binary f s d = let value = (f (get_value m d) (get_value m s)) in
     set_cnd_logic m value;
-    store_value m d value in
+    store_value m value d in
   (* Helper functions for specific instructions. *)
   let shift f s d opc =
     let shamt = get_shamt m s in
@@ -226,7 +225,7 @@ let step (m:mach) : unit =
     let after = f before shamt in
     if shamt <> 0 then ( (* Flags unaffected if no shift is done *)
       m.flags.fs <- after < 0L; m.flags.fz <- after = 0L;
-      store_value m d after;
+      store_value m after d;
       match opc with
       | Sarq -> m.flags.fo <- shamt = 1
       | Shlq -> m.flags.fo <- (logand (shift_left 1L 63) before) = (logand (shift_left 1L 62) before)
@@ -238,13 +237,13 @@ let step (m:mach) : unit =
     logor new_i new_b in
   let push s = (* Decrease stack by 8 bytes and store the new value *)
     m.regs.(rind Rsp) <- Int64.sub m.regs.(rind Rsp) 8L;
-    store_value m (Ind2 Rsp) (get_value m s) in
+    store_value m (get_value m s) (Ind2 Rsp) in
   let pop d = (* Return the latest stack value and increase pointer by 8 bytes *)
-    store_value m d (get_value m (Ind2 Rsp));
+    store_value m (get_value m (Ind2 Rsp)) d;
     m.regs.(rind Rsp) <- Int64.add m.regs.(rind Rsp) 8L in
   let cmp f s d = let oflow = (f (get_value m s) (get_value m d)) in
     set_cnd_oflow m oflow in
-  let jump s = store_value m (Reg Rip) (get_value m s) in
+  let jump s = store_value m (get_value m s) (Reg Rip) in
   match (get_rip m) with
   | (Negq,  [d])    -> unary neg d
   | (Addq,  [s; d]) -> binary add s d
@@ -259,9 +258,9 @@ let step (m:mach) : unit =
   | (Sarq,  [a; d]) -> shift shift_right a d Sarq
   | (Shlq,  [a; d]) -> shift shift_left a d Shlq
   | (Shrq,  [a; d]) -> shift shift_right_logical a d Shrq
-  | (Set c, [d])    -> store_value m d (replace_low_byte (get_value m d) (if interp_cnd m.flags c then 1L else 0L))
-  | (Leaq,  [i; d]) -> store_value m d (get_value m i)
-  | (Movq,  [s; d]) -> store_value m d (get_value m s)
+  | (Set c, [d])    -> store_value m (replace_low_byte (get_value m d) (if interp_cnd m.flags c then 1L else 0L)) d
+  | (Leaq,  [i; d]) -> store_value m (get_value m i) d
+  | (Movq,  [s; d]) -> store_value m (get_value m s) d
   | (Pushq, [s])    -> push s
   | (Popq,  [d])    -> pop d
   | (Cmpq,  [s; d]) -> cmp sub s d
@@ -307,7 +306,7 @@ let assemble (p:prog) : exec =
   let open Int64 in
   let data_length = function
     | Asciz s -> String.length s + 1
-    | Quad _ -> 8 in
+    | Quad _  -> 8 in
   (* Symbol table representation and helper functions. *)
   let symbol_table : (lbl, quad) Hashtbl.t = Hashtbl.create 100 in
   let symbol_add (label:lbl) (pos:quad) : unit =
@@ -321,17 +320,17 @@ let assemble (p:prog) : exec =
   (* "Fix" instructions (Replace labels with their correct values). *)
   let fix_imm : imm -> imm = function
     | Lbl l -> Lit (symbol_lookup l)
-    | i -> i in
+    | i     -> i in
   let fix_operand : operand -> operand = function
-    | Imm i -> Imm (fix_imm i)
-    | Ind1 i -> Ind1 (fix_imm i)
+    | Imm i       -> Imm (fix_imm i)
+    | Ind1 i      -> Ind1 (fix_imm i)
     | Ind3 (i, r) -> Ind3(fix_imm i, r)
-    | op -> op in
+    | op          -> op in
   let fix_ins (opcode,operand:ins) : ins =
     (opcode, map fix_operand operand) in
   let fix_data : data -> data = function
     | Quad i -> Quad (fix_imm i)
-    | d -> d in
+    | d      -> d in
   let fix : asm -> asm = function
     | Text l -> Text (map fix_ins l)
     | Data l -> Data (map fix_data l) in
@@ -376,11 +375,10 @@ let load {entry; text_pos; data_pos; text_seg; data_seg} : mach =
   let regs = make 17 0L in
   regs.(rind Rip) <- entry;
   regs.(rind Rsp) <- sub mem_top 8L; (* The highest address in mem *)
-  let map_addr addr = to_int (sub addr mem_bot) in (* Avoid pattern-matching option *)
   let mem = make mem_size (Byte '\x00') in
   let text_arr = of_list text_seg in
-  blit text_arr 0 mem (map_addr text_pos) (length text_arr);
+  blit text_arr 0 mem (get_addr text_pos) (length text_arr);
   let data_arr = of_list data_seg in
-  blit data_arr 0 mem (map_addr data_pos) (length data_arr);
+  blit data_arr 0 mem (get_addr data_pos) (length data_arr);
   blit (of_list (sbytes_of_int64 exit_addr)) 0 mem (mem_size - 8) 8;
   {flags; regs; mem}

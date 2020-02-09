@@ -168,6 +168,17 @@ let get_value (m:mach) (o:operand) : int64 =
   | Reg x -> m.regs.(rind x)
   | _ -> raise X86lite_segfault
 
+(* Wraps get_value and returns an int for bit shifting *)
+let get_shamt (m:mach) (o:operand) : int =
+  Int64.to_int (get_value m o)
+
+(* Gets memory address through Ind operands *)
+let parse_ind (m: mach) : operand -> int64 = function
+  | Ind1 (Lit i)    -> i
+  | Ind2 r          -> m.regs.(rind r)
+  | Ind3 (Lit i, r) -> Int64.add m.regs.(rind r) i
+  | _               -> invalid_arg "parse_ind: Must be called with Ind"
+
 (* Simulates one step of the machine:
     - fetch the instruction at %rip
     - compute the source and/or destination information from the operands
@@ -177,7 +188,7 @@ let get_value (m:mach) (o:operand) : int64 =
 *)
 (* TODO:
    - Use Int64_overflow to set condition flags
-   - Create function to properly set condition flags for logical instructions
+   - Create function to properly set condition flags for logical instructions 
    - Finish matching of other instructions
      - These probably require custom functions instead of unary, binary *)
 let step (m:mach) : unit =
@@ -186,8 +197,54 @@ let step (m:mach) : unit =
      performs the function based on register values,
      stores it in the proper register,
      and updates condition flags.  *)
-  let unary f d = store_value m d (f (get_value m d)).value; () in
-  let binary f s d = store_value m s (f (get_value m s) (get_value m d)).value in
+  let unary f d = let oflow = (f (get_value m d)) in (
+    m.flags.fo <- oflow.overflow; m.flags.fs <- oflow.value < 0L; m.flags.fz <- oflow.value = 0L;
+    store_value m d oflow.value
+  ) in
+  let logic_unary f d = let value = (f (get_value m d)) in (
+    m.flags.fo <- false; m.flags.fs <- value < 0L; m.flags.fz <- value = 0L;
+    store_value m d value
+  ) in
+  let binary f s d = let oflow = (f (get_value m s) (get_value m d)) in (
+     m.flags.fo <- oflow.overflow; m.flags.fs <- oflow.value < 0L; m.flags.fz <- oflow.value = 0L;
+     store_value m d oflow.value
+  ) in
+  let logic_binary f s d = let value = (f (get_value m s) (get_value m d)) in (
+     m.flags.fo <- false; m.flags.fs <- value < 0L; m.flags.fz <- value = 0L;
+     store_value m d value
+  ) in
+  let shift f s d opc = let shamt = get_shamt m s in let before = get_value m d in let after = f before shamt in (
+	  (* Flags unaffected if no shift is done *)
+    if shamt <> 0 then (
+		m.flags.fs <- after < 0L; m.flags.fz <- after = 0L;
+    store_value m d after;
+
+		let open Int64 in
+		match opc with
+		| Sarq ->  m.flags.fo <- shamt = 1
+		| Shlq -> m.flags.fo <- (logand (shift_left 1L 63) before) = (logand (shift_left 1L 62) before)
+		| Shrq -> m.flags.fo <- (logand (shift_left 1L 63) before) = 1L
+		| _ -> failwith "Incorrect operation passed"
+	)) in
+  let replace_low_byte (i: int64) (b: int64) : int64 =
+    let new_i = (Int64.logand (Int64.lognot 255L) i) in
+    let new_b = (Int64.logand 255L b) in
+    Int64.logor new_i new_b
+  in
+  let push s = (
+    (* Decrease stack by 8 bytes and store the new value *)
+    m.regs.(rind Rsp) <- Int64.sub m.regs.(rind Rsp) 8L;
+    store_value m (Ind2 Rsp) (get_value m s)
+  ) in
+  let pop d = (
+    (* Return the latest stack value and increase pointer by 8 bytes *)
+    store_value m d (get_value m (Ind2 Rsp));
+    m.regs.(rind Rsp) <- Int64.add m.regs.(rind Rsp) 8L
+  ) in
+  let cmp f s d = let oflow = (f (get_value m s) (get_value m d)) in (
+     m.flags.fo <- oflow.overflow; m.flags.fs <- oflow.value < 0L; m.flags.fz <- oflow.value = 0L;
+  ) in
+  let jump s = store_value m (Reg Rip) (get_value m s) in
   match (get_rip m) with
   | (Negq,  [d])    -> unary neg d (* Temporary *)
   | (Addq,  [s; d]) -> binary add s d (* Temporary *)
@@ -195,23 +252,23 @@ let step (m:mach) : unit =
   | (Imulq, [s; d]) -> binary mul s d (* Temporary *)
   | (Incq,  [s])    -> unary succ s (* Temporary *)
   | (Decq,  [s])    -> unary pred s (* Temporary *)
-  (*| (Notq,  [s])    -> unary Int64.lognot s (* Temporary *)
-  | (Andq,  [s; d]) -> binary Int64.logand s d (* Temporary *)
-  | (Orq,   [s; d]) -> binary Int64.logor s d (* Temporary *)
-  | (Xorq,  [s; d]) -> binary Int64.logxor s d (* Temporary *)
-  | (Sarq,  [a; d]) -> binary Int64.shift_right d a (* Temporary *)
-  | (Shlq,  [a; d]) -> binary Int64.shift_left d a (* Temporary *)
-  | (Shrq,  [a; d]) -> binary Int64.shift_right_logical d a (* Temporary *)*)
-  | (Set c, [d])    -> failwith "Setb"
-  | (Leaq,  [i; d]) -> failwith "Leaq"
-  | (Movq,  [s; d]) -> failwith "Movq"
-  | (Pushq, [s])    -> failwith "Pushq"
-  | (Popq,  [d])    -> failwith "Popq"
-  | (Cmpq,  [s; d]) -> failwith "Cmpq"
-  | (Jmp,   [s])    -> failwith "Jmp"
-  | (Callq, [s])    -> failwith "Callq"
-  | (Retq,  [])     -> failwith "Retq"
-  | (J c,   [s])    -> failwith "J"
+  | (Notq,  [s])    -> logic_unary Int64.lognot s (* Temporary *)
+  | (Andq,  [s; d]) -> logic_binary Int64.logand s d (* Temporary *)
+  | (Orq,   [s; d]) -> logic_binary Int64.logor s d (* Temporary *)
+  | (Xorq,  [s; d]) -> logic_binary Int64.logxor s d (* Temporary *)
+  | (Sarq,  [a; d]) -> shift Int64.shift_right a d Sarq (* Temporary *)
+  | (Shlq,  [a; d]) -> shift Int64.shift_left a d Shlq (* Temporary *)
+  | (Shrq,  [a; d]) -> shift Int64.shift_right_logical a d Shrq(* Temporary *)
+  | (Set c, [d])    -> store_value m d (replace_low_byte (get_value m d) (if interp_cnd m.flags c then 1L else 0L))
+  | (Leaq,  [i; d]) -> store_value m d (parse_ind m i)
+  | (Movq,  [s; d]) -> store_value m d (get_value m s)
+  | (Pushq, [s])    -> push s
+  | (Popq,  [d])    -> pop d
+  | (Cmpq,  [s; d]) -> cmp sub s d
+  | (Jmp,   [s])    -> jump s
+  | (Callq, [s])    -> push (Reg Rip); jump s
+  | (Retq,  [])     -> pop (Reg Rip)
+  | (J c,   [s])    -> if interp_cnd m.flags c then jump s
   | _ -> failwith "Unimplemented instruction"
 
 (* Runs the machine until the rip register reaches a designated

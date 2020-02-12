@@ -95,6 +95,38 @@ let tetrate_rec a n = [
   ];
 ]
 
+let array_sum = [
+  text "main"
+  [
+    Movq, [~$1; Ind3 (Lit (-48L), Rsp)];
+    Movq, [~$2; Ind3 (Lit (-40L), Rsp)];
+    Movq, [~$3; Ind3 (Lit (-32L), Rsp)];
+    Movq, [~$4; Ind3 (Lit (-24L), Rsp)];
+    Movq, [~$5; Ind3 (Lit (-16L), Rsp)];
+
+    Movq, [~%Rsp; ~%R08];
+    Addq, [~$(-48); ~%R08];
+
+    Movq, [~%Rsp; ~%R09];
+    Subq, [~$8; ~%R09];
+    Movq, [~$0; ~%Rax]
+  ];
+  text "loop"
+  [
+    Cmpq, [~%R08; ~%R09];
+    J Eq, [~$$"exit"];
+
+
+    Addq, [Ind3 (Lit (0L), R08); ~%Rax];
+    Addq, [~$8; ~%R08];
+    Jmp, [~$$"loop"];
+  ];
+  text "exit"
+  [
+    Retq, []
+  ]
+]
+
 
 let provided_tests : suite = [
   Test ("Student-Provided Big Test for Part III: Score recorded as PartIIITestCase", [
@@ -108,6 +140,9 @@ let provided_tests : suite = [
   ]);
   GradedTest ("Tetrate_Rec", 10, [
     ("tetrate1", program_test (tetrate_rec 2 4) 65536L);
+  ]);
+  GradedTest ("Array_Test", 10, [
+    ("array1", program_test (array_sum) 15L);
   ]);
 
 ]

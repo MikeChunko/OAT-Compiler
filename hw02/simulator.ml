@@ -3,7 +3,7 @@
 (* Pledge: I pledge my honor that I have abided by the Stevens Honor System.  *)
 open X86
 
-(* simulator machine state -------------------------------------------------- *)
+(* Simulator machine state *)
 let mem_bot = 0x400000L          (* lowest valid address *)
 let mem_top = 0x410000L          (* one past the last byte in memory *)
 let mem_size = Int64.to_int (Int64.sub mem_top mem_bot)
@@ -11,7 +11,7 @@ let nregs = 17                   (* including Rip *)
 let ins_size = 8L                (* assume we have a 8-byte encoding *)
 let exit_addr = 0xfdeadL         (* halt when m.regs(%rip) = exit_addr *)
 
-(* Your simulator should raise this exception if it tries to read from or
+(* The simulator will raise this exception if it tries to read from or
    store to an address not within the valid address space. *)
 exception X86lite_segfault
 
@@ -48,8 +48,7 @@ exception X86lite_segfault
        0x40000D :  InsFrag
        0x40000E :  InsFrag
        0x40000F :  InsFrag
-       0x400010 :  InsFrag
-*)
+       0x400010 :  InsFrag *)
 type sbyte = InsB0 of ins       (* 1st byte of an instruction *)
            | InsFrag            (* 2nd - 7th bytes of an instruction *)
            | Byte of char       (* non-instruction byte *)
@@ -159,8 +158,7 @@ let get_addr (addr:quad) : int =
 let store_value (m:mach) (v:int64) : operand -> unit =
   let store (m:mach) (addr:quad) (v:int64) : unit =
     let open Array in
-    blit (of_list (sbytes_of_int64 v)) 0 m.mem (get_addr addr) 8 
-  in function
+    blit (of_list (sbytes_of_int64 v)) 0 m.mem (get_addr addr) 8 in function
   | Reg r           -> m.regs.(rind r) <- v
   | Imm i           -> failwith "Cannot store to immediate"
   | Ind1 (Lit i)    -> store m i v
@@ -178,7 +176,7 @@ let get_rip (m:mach) : ins =
     | _       -> raise X86lite_segfault (* Invalid instruction. *)
 
 (* Get the int64 value/address of an operand. *)
-let get_value (m:mach) : operand -> int64 = 
+let get_value (m:mach) : operand -> int64 =
   let get (m:mach) (v:int) : int64 =
     let open Array in
     int64_of_sbytes (to_list (sub m.mem v 8))
@@ -199,25 +197,20 @@ let get_shamt (m:mach) (o:operand) : int =
     - compute the source and/or destination information from the operands
     - simulate the instruction semantics
     - update the registers and/or memory appropriately
-    - set the condition flags
-*)
+    - set the condition flags *)
 let step (m:mach) : unit =
   let open Int64 in
   let open Int64_overflow in
   (* Take in a function and register(s), perform the function based on register value(s),
      store in the proper register, and update condition flags.  *)
   let unary f d = let oflow = (f (get_value m d)) in
-    set_cnd_oflow m oflow;
-    store_value m oflow.value d in
+    set_cnd_oflow m oflow; store_value m oflow.value d in
   let logic_unary f d = let value = (f (get_value m d)) in
-    set_cnd_logic m value;
-    store_value m value d in
+    set_cnd_logic m value; store_value m value d in
   let binary f s d = let oflow = (f (get_value m d) (get_value m s)) in
-    set_cnd_oflow m oflow;
-    store_value m oflow.value d in
+    set_cnd_oflow m oflow; store_value m oflow.value d in
   let logic_binary f s d = let value = (f (get_value m d) (get_value m s)) in
-    set_cnd_logic m value;
-    store_value m value d in
+    set_cnd_logic m value; store_value m value d in
   (* Helper functions for specific instructions. *)
   let shift f s d opc =
     let shamt = get_shamt m s in
@@ -299,8 +292,7 @@ exception Redefined_sym of lbl
    - resolve the labels to concrete addresses and 'patch' the instructions to
       replace Lbl values with the corresponding Imm values.
    - the text segment starts at the lowest address
-   - the data segment starts after the text segment
- *)
+   - the data segment starts after the text segment *)
 let assemble (p:prog) : exec =
   let open List in
   let open Int64 in
@@ -366,8 +358,7 @@ let assemble (p:prog) : exec =
       - initialize rip to the entry point address
       - initializes rsp to the last word in memory
       - the other registers are initialized to 0
-    - the condition code flags start as 'false'
-*)
+    - the condition code flags start as 'false' *)
 let load {entry; text_pos; data_pos; text_seg; data_seg} : mach =
   let open Array in
   let open Int64 in

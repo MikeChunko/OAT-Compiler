@@ -1,3 +1,5 @@
+(* Author: Michael Chunko, Dominick DiMaggio                                  *)
+(* Pledge: I pledge my honor that I have abided by the Stevens Honor System.  *)
 open Assert
 open X86
 open Simulator
@@ -115,7 +117,6 @@ let array_sum = [
   [
     Cmpq, [~%R08; ~%R09];
     J Eq, [~$$"exit"];
-
 
     Addq, [Ind3 (Lit (0L), R08); ~%Rax];
     Addq, [~$8; ~%R08];

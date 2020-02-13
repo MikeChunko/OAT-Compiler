@@ -43,7 +43,7 @@ let tetrate_rec a n = [
   text "main" [
     Movq, [~$a; ~%R08];
     Movq, [~$n; ~%R09];
-    Addq, [~$1; ~%R09];
+    Addq, [~$1; ~%R09];  (* Makes initial call not subtract *)
     Callq, [~$$"tetrate"];
 
     Retq, []
@@ -86,7 +86,7 @@ let tetrate_rec a n = [
   [
     Pushq, [~%R08];
     Pushq, [~%R09];
-    Subq, [~$1; ~%R09]; (* Need to make the initial call NOT subtract *)
+    Subq, [~$1; ~%R09];
     Cmpq, [~$0; ~%R09];
     J Eq, [~$$"end_tetrate"];
 
@@ -128,22 +128,11 @@ let array_sum = [
   ]
 ]
 
-
 let provided_tests : suite = [
   Test ("Student-Provided Big Test for Part III: Score recorded as PartIIITestCase", [
-  ]);
-
-  GradedTest ("Power_Zero", 10, [
     ("power1", program_test (power_iter 5 0) 1L);
-  ]);
-  GradedTest ("Power_Normal", 10, [
     ("power2", program_test (power_iter 5 3) 125L);
-  ]);
-  GradedTest ("Tetrate_Rec", 10, [
     ("tetrate1", program_test (tetrate_rec 2 4) 65536L);
-  ]);
-  GradedTest ("Array_Test", 10, [
     ("array1", program_test (array_sum) 15L);
   ]);
-
 ]

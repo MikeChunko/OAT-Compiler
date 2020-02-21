@@ -83,8 +83,11 @@ let lookup m x = List.assoc x m
   implement the following helper function, whose job is to generate
   the X86 instruction that moves an LLVM operand into a designated
   destination (usually a register). *)
-let compile_operand ctxt dest : Ll.operand -> ins =
-  function _ -> failwith "compile_operand unimplemented"
+let compile_operand ctxt dest : Ll.operand -> ins = function
+  | Null    -> (Movq, [Imm (Lit 0L); dest])
+  | Const i -> (Movq, [Imm (Lit i); dest])
+  | Gid gid -> failwith "Implement compile_operand Gid"
+  | Id uid  -> (Movq, [lookup ctxt.layout uid])
 
 (* Compiling call  ---------------------------------------------------------- *)
 
@@ -199,7 +202,6 @@ let compile_insn ctxt (uid, i) : X86.ins list =
 let compile_terminator ctxt t =
   failwith "compile_terminator not implemented"
 
-
 (* Compiling blocks --------------------------------------------------------- *)
 
 (* We have left this helper function here for you to complete. *)
@@ -219,7 +221,6 @@ let compile_lbl_block lbl ctxt blk : elem =
   [ NOTE: the first six arguments are numbered 0 .. 5 ] *)
 let arg_loc (n : int) : operand =
   failwith "arg_loc not implemented"
-
 
 (* We suggest that you create a helper function that computes the
   stack layout for a given function declaration.
@@ -247,7 +248,6 @@ let stack_layout args (block, lbled_blocks) : layout =
 let compile_fdecl tdecls name { f_ty; f_param; f_cfg } =
   failwith "compile_fdecl unimplemented"
 
-
 (* compile_gdecl ------------------------------------------------------------ *)
 (* Compile a global value into an X86 global data declaration and map
    a global uid to its associated X86 label. *)
@@ -257,9 +257,7 @@ let rec compile_ginit = function
   | GInt c    -> [Quad (Lit c)]
   | GString s -> [Asciz s]
   | GArray gs | GStruct gs -> List.map compile_gdecl gs |> List.flatten
-
 and compile_gdecl (_, g) = compile_ginit g
-
 
 (* compile_prog ------------------------------------------------------------- *)
 let compile_prog {tdecls; gdecls; fdecls} : X86.prog =

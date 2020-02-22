@@ -236,8 +236,9 @@ let arg_loc (n : int) : operand =
   - in this (inefficient) compilation strategy, each local id
     is also stored as a stack slot.
   - see the discusion about locals *)
+(* let stack_layout args (block, lbled_blocks) : layout = *)
 let stack_layout args (block, lbled_blocks) : layout =
-  failwith "stack_layout not implemented"
+  failwith "stack_layout unimplemented"
 
 (* The code for the entry-point of a function must do several things:
   - since our simple compiler maps local %uids to stack slots,
@@ -253,7 +254,12 @@ let stack_layout args (block, lbled_blocks) : layout =
 
   - the function entry code should allocate the stack storage needed
     to hold all of the local stack slots. *)
-let compile_fdecl tdecls name { f_ty; f_param; f_cfg } =
+(*  
+    f_ty: return type
+    f_param: parameter list (can be of many types)
+    f_cfg: control flow graph
+ *)
+let compile_fdecl (tdecls : (Ll.tid * Ll.ty) list) name { f_ty; f_param; f_cfg } =
   failwith "compile_fdecl unimplemented"
 
 (* compile_gdecl ------------------------------------------------------------ *)

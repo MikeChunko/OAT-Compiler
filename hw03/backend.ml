@@ -259,10 +259,18 @@ let stack_layout args (block, lbled_blocks) : layout =
     f_param: parameter list (can be of many types)
     f_cfg: control flow graph
  *)
-let compile_fdecl (tdecls : (Ll.tid * Ll.ty) list) (name : string) { f_ty; f_param; f_cfg } =
-  match tdecls with
-  | (a,b) :: tl -> failwith ("compile_fdecl fail, tid1: " ^ a)
-  | _ -> failwith ("compile_fdecl fail, name: " ^ name)
+let compile_fdecl (tdecls : (Ll.tid * Ll.ty) list) (name : string) { f_ty; f_param; f_cfg } : X86.prog =
+  let open Asm in
+  [
+    {lbl = name; global = true; asm =
+      Text
+      [
+        (Movq, [~$5; ~%Rax]);
+        (Addq, [~$9; ~%Rax]);
+        (Retq, [])
+      ]
+    }
+  ]
 
 (* compile_gdecl ------------------------------------------------------------ *)
 (* Compile a global value into an X86 global data declaration and map

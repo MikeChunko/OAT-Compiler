@@ -197,7 +197,7 @@ let compile_insn ctxt (uid, i) : X86.ins list =
   compile_fdecl.
 
   [ NOTE: the first six arguments are numbered 0 .. 5 ] *)
-let arg_loc (n : int) : operand =
+let arg_loc (n:int) : operand =
   match n with
   | 0 -> Reg Rdi
   | 1 -> Reg Rsi
@@ -205,30 +205,28 @@ let arg_loc (n : int) : operand =
   | 3 -> Reg Rcx
   | 4 -> Reg R08
   | 5 -> Reg R09
-  | _ -> Ind3 (Lit (Int64.of_int (8 * (n-8))), Rbp)
   (* Puts the rest on the stack *)
+  | _ -> Ind3 (Lit (Int64.of_int (8 * (n-8))), Rbp)
 
 let compile_bop : Ll.bop -> X86.opcode = function
-  | Add -> Addq
-  | Sub -> Subq
-  | Mul -> Imulq
-  | Shl -> Shlq
+  | Add  -> Addq
+  | Sub  -> Subq
+  | Mul  -> Imulq
+  | Shl  -> Shlq
   | Lshr -> Shrq
   | Ashr -> Sarq
-  | And -> Andq
-  | Or -> Orq
-  | Xor-> Xorq
+  | And  -> Andq
+  | Or   -> Orq
+  | Xor  -> Xorq
 
-let get_uid (op:Ll.operand) : uid =
-  begin match op with
+let get_uid : Ll.operand -> uid = function
   | Id uid -> uid
-  | _ -> failwith "expected uid"
-  end
+  | _      -> failwith "expected uid"
 
 let compile_insn ctxt ((uid:uid), (i:Ll.insn)) : X86.ins list =
   let open X86.Asm in
-  begin match i with
-  | Binop (binop, typ, op1, op2) -> 
+  match i with
+  | Binop (binop, typ, op1, op2) ->
     let binopcode = compile_bop binop in
     let x_op1 = compile_operand ctxt (Reg R10) op1 in
     let x_op2 = compile_operand ctxt (Reg R11) op2 in
@@ -236,10 +234,9 @@ let compile_insn ctxt ((uid:uid), (i:Ll.insn)) : X86.ins list =
       x_op1;
       x_op2;
       (binopcode, [~%R10; ~%R11]);
-      (Movq, [~%R11; (lookup ctxt.layout uid)])
+      (Movq, [~%R11; lookup ctxt.layout uid])
     ]
   | _ -> failwith "unimplemented instruction"
-  end
 
 (* Compile block terminators is not too difficult:
   - Ret should properly exit the function: freeing stack space,
@@ -287,7 +284,7 @@ let stack_layout args (block, lbled_blocks) : layout =
 
   - the function entry code should allocate the stack storage needed
     to hold all of the local stack slots. *)
-(*  
+(*
     f_ty: return type
     f_param: parameter list (can be of many types)
     f_cfg: control flow graph
@@ -298,7 +295,7 @@ let compile_fdecl (tdecls : (Ll.tid * Ll.ty) list) (name : string) { f_ty; f_par
     {lbl = name; global = true; asm =
       Text
       [
-        (Movq, [~$5; ~%Rax]);
+        (Movq, [~$5; ~%Rax]); (* Temporary code *)
         (Addq, [~$9; ~%Rax]);
         (Retq, [])
       ]

@@ -12,7 +12,6 @@ let execute_tests () =
   Printf.printf "%s\n" (outcome_to_string outcome);
   raise Ran_tests
 
-
 (* command-line arguments --------------------------------------------------- *)
 let args =
   [ ("--test", Unit execute_tests, "run the test suite, ignoring other files inputs")
@@ -27,7 +26,6 @@ let args =
   ; ("--execute-x86", Set execute_x86, "run the resulting executable file")
   ; ("-v", Unit Platform.enable_verbose, "enables more verbose compilation output")
   ]
-
 
 (* Files found on the command line *)
 let files = ref []

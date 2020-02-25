@@ -1,6 +1,6 @@
 ;; open Ll
 
-(* serializing --------------------------------------------------------------- *)
+(* Serializing --------------------------------------------------------------- *)
 
 let mapcat s f l = String.concat s @@ List.map f l
 let prefix p f a = p ^ f a
@@ -8,8 +8,8 @@ let ( ^. ) s t = if s = "" || t = "" then "" else s ^ t
 let pp = Printf.sprintf
 
 let rec string_of_ty : ty -> string = function
-  | Void         -> "void" 
-  | I1           -> "i1" 
+  | Void         -> "void"
+  | I1           -> "i1"
   | I8           -> "i8"
   | I64          -> "i64"
   | Ptr ty       -> pp "%s*" (string_of_ty ty)
@@ -36,13 +36,13 @@ let soop (t,v:ty * operand) : string =
   pp "%s %s" (sot t) (soo v)
 
 let string_of_bop : bop -> string = function
-    | Add -> "add"  | Sub  -> "sub"  | Mul  -> "mul" 
-    | Shl -> "shl"  | Lshr -> "lshr" | Ashr -> "ashr"
-    | And -> "and"  | Or   -> "or"   | Xor  -> "xor"
+  | Add -> "add"  | Sub  -> "sub"  | Mul  -> "mul"
+  | Shl -> "shl"  | Lshr -> "lshr" | Ashr -> "ashr"
+  | And -> "and"  | Or   -> "or"   | Xor  -> "xor"
 
 let string_of_cnd : cnd -> string = function
-    | Eq  -> "eq"  | Ne  -> "ne"  | Slt -> "slt" 
-    | Sle -> "sle" | Sgt -> "sgt" | Sge -> "sge"
+  | Eq  -> "eq"  | Ne  -> "ne"  | Slt -> "slt"
+  | Sle -> "sle" | Sgt -> "sgt" | Sge -> "sge"
 
 let string_of_gep_index : operand -> string = function
   | Const i -> "i32 " ^ Int64.to_string i
@@ -53,14 +53,14 @@ let string_of_insn : insn -> string = function
                                (string_of_bop b) (sot t) (soo o1) (soo o2)
   | Alloca t             -> pp "alloca %s" (sot t)
   | Load (t, o)          -> pp "load %s, %s %s" (sot (dptr t)) (sot t) (soo o)
-  | Store (t, os, od)    -> pp "store %s %s, %s %s" 
+  | Store (t, os, od)    -> pp "store %s %s, %s %s"
                                (sot t) (soo os) (sot (Ptr t)) (soo od)
-  | Icmp (c, t, o1, o2)  -> pp "icmp %s %s %s, %s" 
+  | Icmp (c, t, o1, o2)  -> pp "icmp %s %s %s, %s"
                                (string_of_cnd c) (sot t) (soo o1) (soo o2)
   | Call (t, o, oa)      -> pp "call %s %s(%s)"
                                (sot t) (soo o) (mapcat ", " soop oa)
   | Bitcast (t1, o, t2)  -> pp "bitcast %s %s to %s" (sot t1) (soo o) (sot t2)
-  | Gep (t, o, oi)       -> pp "getelementptr %s, %s %s, %s" (sot (dptr t)) (sot t) (soo o) 
+  | Gep (t, o, oi)       -> pp "getelementptr %s, %s %s, %s" (sot (dptr t)) (sot t) (soo o)
                                (mapcat ", " string_of_gep_index oi)
 
 let string_of_named_insn (u,i:uid * insn) : string =
@@ -85,7 +85,7 @@ let string_of_cfg (e,bs:cfg) : string =
 let string_of_named_fdecl (g,f:gid * fdecl) : string =
   let string_of_arg (t,u) = pp "%s %%%s" (sot t) u in
   let ts, t = f.f_ty in
-  pp "define %s @%s(%s) {\n%s\n}\n" (sot t) g 
+  pp "define %s @%s(%s) {\n%s\n}\n" (sot t) g
      (mapcat ", " string_of_arg List.(combine ts f.f_param))
      (string_of_cfg f.f_cfg)
 
@@ -108,7 +108,7 @@ let string_of_named_tdecl (n,t:tid * ty) : string =
 
 let string_of_named_edecl (g,t:gid * ty) : string =
   match t with
-  | Fun (ts, rt) -> pp "declare %s @%s(%s)" (string_of_ty rt) g 
+  | Fun (ts, rt) -> pp "declare %s @%s(%s)" (string_of_ty rt) g
                        (mapcat ", " string_of_ty ts)
   | _ -> pp "@%s = external global %s" g (string_of_ty t)
 
@@ -118,45 +118,40 @@ let string_of_prog (p:prog) : string =
   ^ (mapcat "\n" string_of_named_fdecl p.fdecls ^. "\n\n")
   ^ (mapcat "\n" string_of_named_edecl p.edecls)
 
-(* comparison for testing ----------------------------------------------------- *)
+(* Comparison for testing ----------------------------------------------------- *)
 
-(* delete dummy uids before comparison *)
+(* Delete dummy uids before comparison *)
 let compare_block (b:block) (c:block) : int =
   let del_dummy (u,i) =
     match i with
     | Store (_, _, _) -> "", i
     | Call (Void, _, _) -> "", i
-    | _ -> u, i
-  in
-  let del_term (u,t) = ("", t)
-  in
+    | _ -> u, i in
+  let del_term (u,t) = ("", t) in
   Pervasives.compare
     {insns=List.map del_dummy b.insns; term=del_term b.term}
     {insns=List.map del_dummy c.insns; term=del_term c.term}
 
-
-
-(* helper module for AST ------------------------------------------------------ *)
-
+(* Helper module for AST ------------------------------------------------------ *)
 module IR = struct
-    let define t gid args f_cfg =
-      let ats, f_param = List.split args in
-      gid, { f_ty=ats,t; f_param; f_cfg}
+  let define t gid args f_cfg =
+    let ats, f_param = List.split args in
+    gid, { f_ty=ats,t; f_param; f_cfg}
 
-    (* ignore first label *)
-    let cfg (lbs:(lbl * block) list) : cfg =
-      match lbs with
-      | [] -> failwith "cfg: no blocks!"
-      | (_,b)::lbs -> b, lbs
+  (* Ignore first label *)
+  let cfg (lbs:(lbl * block) list) : cfg =
+    match lbs with
+    | [] -> failwith "cfg: no blocks!"
+    | (_,b)::lbs -> b, lbs
 
-    let entry insns term : (lbl * block) = "", { insns; term }
-    let label lbl insns term = lbl, { insns; term }
+  let entry insns term : (lbl * block) = "", { insns; term }
+  let label lbl insns term = lbl, { insns; term }
 
-    (* terminators *)
-    let ret_void = Ret (Void, None)
-    let ret t op = Ret (t, Some op)
-    let br l = Br l
-    let cbr op l1 l2 = Cbr (op, l1, l2)
+  (* Terminators *)
+  let ret_void = Ret (Void, None)
+  let ret t op = Ret (t, Some op)
+  let br l = Br l
+  let cbr op l1 l2 = Cbr (op, l1, l2)
 end
 
 module Parsing = struct
@@ -165,5 +160,4 @@ let gensym, reset =
   let c = ref 0 in
     ( fun (s:string) -> incr c; Printf.sprintf "_%s__%d" s (!c) )
   , ( fun () -> c := 0 )
-
 end

@@ -26,84 +26,84 @@ type ty =
 
 let rec string_of_ty (t:ty) : string =
   match t with
-  | Void -> "Void, "
-  | I1 -> "I1, "
-  | I8 -> "I8, "
-  | I64 -> "I64, "
-  | Ptr t1 -> "Ptr of " ^ string_of_ty t1
+  | Void      -> "Void, "
+  | I1        -> "I1, "
+  | I8        -> "I8, "
+  | I64       -> "I64, "
+  | Ptr t1    -> "Ptr of " ^ string_of_ty t1
   | Struct tl -> "Struct of [" ^ print_tylist tl ^ "]"
-  | _ -> "Unimplemented print, "
+  | _         -> "Unimplemented print, "
 and
 print_tylist (lst: ty list) =
-    match lst with
-    | h::tl -> string_of_ty h ^ print_tylist tl
-    | [] -> ", END"
-    
+  match lst with
+  | h::tl -> string_of_ty h ^ print_tylist tl
+  | []    -> ", END"
+
 (* Function type: argument types and return type *)
 type fty = ty list * ty
 
 let rec print_strlist (lst: string list) =
-    match lst with
-    | h::tl -> h ^ ", " ^ print_strlist tl
-    | _ -> ", END"
+  match lst with
+  | h::tl -> h ^ ", " ^ print_strlist tl
+  | _ -> ", END"
 
 (* Syntactic Values *)
 type operand =
-| Null
-| Const of int64
-| Gid of gid
-| Id of uid
+  | Null
+  | Const of int64
+  | Gid of gid
+  | Id of uid
 
 (* Binary i64 Operations *)
 type bop =
-| Add
-| Sub
-| Mul
-| Shl
-| Lshr
-| Ashr
-| And
-| Or
-| Xor
+  | Add
+  | Sub
+  | Mul
+  | Shl
+  | Lshr
+  | Ashr
+  | And
+  | Or
+  | Xor
 
 (* Comparison Operators *)
 type cnd =
-| Eq
-| Ne
-| Slt
-| Sle
-| Sgt
-| Sge
+  | Eq
+  | Ne
+  | Slt
+  | Sle
+  | Sgt
+  | Sge
 
 (* Instructions *)
 type insn =
-| Binop of bop * ty * operand * operand
-| Alloca of ty
-| Load of ty * operand
-| Store of ty * operand * operand
-| Icmp of cnd * ty * operand * operand
-| Call of ty * operand * (ty * operand) list
-| Bitcast of ty * operand * ty
-| Gep of ty * operand * operand list
+  | Binop of bop * ty * operand * operand
+  | Alloca of ty
+  | Load of ty * operand
+  | Store of ty * operand * operand
+  | Icmp of cnd * ty * operand * operand
+  | Call of ty * operand * (ty * operand) list
+  | Bitcast of ty * operand * ty
+  | Gep of ty * operand * operand list
 
 let rec bop_to_str inp =
   match inp with
-  | Add -> "Add"
-  | Sub -> "Sub"
-  | Mul -> "Mul"
-  | Shl -> "Shl"
+  | Add  -> "Add"
+  | Sub  -> "Sub"
+  | Mul  -> "Mul"
+  | Shl  -> "Shl"
   | Lshr -> "Lshr"
   | Ashr -> "Ashr"
-  | And -> "And"
-  | Or -> "Or"
-  | Xor -> "Xor"
+  | And  -> "And"
+  | Or   -> "Or"
+  | Xor  -> "Xor"
 
 let rec op_to_str inp =
   match inp with
-  | Null -> "Null"
+  | Null    -> "Null"
   | Const i -> "Const " ^ Int64.to_string i
-  | Gid g -> "Gid " ^ g
-  | Id u -> "Uid " ^ u
+  | Gid g   -> "Gid " ^ g
+  | Id u    -> "Uid " ^ u
 
 let rec insn_to_str inp =
   match inp with
@@ -129,7 +129,7 @@ type block = { insns : (uid * insn) list; term : (uid * terminator) }
 let rec block_to_string (blk:(uid * insn) list) =
   match blk with
   | (a,b) :: tl -> (insn_to_str b) ^ ", " ^ (block_to_string tl)
-  | [] -> ""
+  | []          -> ""
 
 (* Control Flow Graphs: entry and labeled blocks *)
 type cfg = block * (lbl * block) list

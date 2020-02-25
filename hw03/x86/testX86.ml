@@ -7,11 +7,11 @@ let puts_label = mk_lbl_named "_puts"  (* gcc on linux/mac uses _ to munge names
 let main_seq = [
   Push (esp);
   Mov (ebp, esp);
-  
+
   Add (esp, Imm (-8l));   (* Not sure why this has to be 8 *)
   Mov (stack_offset 0l, Lbl hello_label);
   Call (Lbl puts_label);
-  
+
   Mov (esp, ebp);
   Pop (ebp);
   Ret

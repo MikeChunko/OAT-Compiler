@@ -36,7 +36,6 @@ let exec_e2e_ast ll_ast args extra_files =
   let _ = Platform.verb @@ Printf.sprintf "** Executable exited with: %d\n" result in
   Int64.of_int result
 
-
 let exec_e2e_file path args =
   let ast = Driver.parse_ll_file path in
   exec_e2e_ast ast args []
@@ -146,9 +145,6 @@ let io_tests =
   ; "llprograms/args1.ll", ["hello"; "cis341"; "foo"], "argc > 3"
   ]
 
-
-
-
 (* Hidden *)
 let hidden_large_tests =
   []
@@ -158,8 +154,6 @@ let large_tests = [ "llprograms/list1.ll", 3L
                   ; "llprograms/factorial.ll", 120L
                   ; "llprograms/factrect.ll", 120L
                   ]
-
-
 
 let tests : suite =
   [ GradedTest("size_ty tests", 5, size_ty_tests)

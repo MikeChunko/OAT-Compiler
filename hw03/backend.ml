@@ -191,6 +191,56 @@ let compile_insn ctxt (uid, i) : X86.ins list =
 
 (* Compiling terminators  --------------------------------------------------- *)
 
+(* This helper function computes the location of the nth incoming
+  function argument: either in a register or relative to %rbp,
+  according to the calling conventions.  You might find it useful for
+  compile_fdecl.
+
+  [ NOTE: the first six arguments are numbered 0 .. 5 ] *)
+let arg_loc (n : int) : operand =
+  match n with
+  | 0 -> Reg Rdi
+  | 1 -> Reg Rsi
+  | 2 -> Reg Rdx
+  | 3 -> Reg Rcx
+  | 4 -> Reg R08
+  | 5 -> Reg R09
+  | _ -> Ind3 (Lit (Int64.of_int (8 * (n-8))), Rbp)
+  (* Puts the rest on the stack *)
+
+let compile_bop : Ll.bop -> X86.opcode = function
+  | Add -> Addq
+  | Sub -> Subq
+  | Mul -> Imulq
+  | Shl -> Shlq
+  | Lshr -> Shrq
+  | Ashr -> Sarq
+  | And -> Andq
+  | Or -> Orq
+  | Xor-> Xorq
+
+let get_uid (op:Ll.operand) : uid =
+  begin match op with
+  | Id uid -> uid
+  | _ -> failwith "expected uid"
+  end
+
+let compile_insn ctxt ((uid:uid), (i:Ll.insn)) : X86.ins list =
+  let open X86.Asm in
+  begin match i with
+  | Binop (binop, typ, op1, op2) -> 
+    let binopcode = compile_bop binop in
+    let x_op1 = compile_operand ctxt (Reg R10) op1 in
+    let x_op2 = compile_operand ctxt (Reg R11) op2 in
+    [
+      x_op1;
+      x_op2;
+      (binopcode, [~%R10; ~%R11]);
+      (Movq, [~%R11; (lookup ctxt.layout uid)])
+    ]
+  | _ -> failwith "unimplemented instruction"
+  end
+
 (* Compile block terminators is not too difficult:
   - Ret should properly exit the function: freeing stack space,
     restoring the value of %rbp, and putting the return value (if
@@ -212,23 +262,6 @@ let compile_lbl_block lbl ctxt blk : elem =
   Asm.text lbl (compile_block ctxt blk)
 
 (* compile_fdecl ------------------------------------------------------------ *)
-
-(* This helper function computes the location of the nth incoming
-  function argument: either in a register or relative to %rbp,
-  according to the calling conventions.  You might find it useful for
-  compile_fdecl.
-
-  [ NOTE: the first six arguments are numbered 0 .. 5 ] *)
-let arg_loc (n : int) : operand =
-  match n with
-  | 0 -> Reg Rdi
-  | 1 -> Reg Rsi
-  | 2 -> Reg Rdx
-  | 3 -> Reg Rcx
-  | 4 -> Reg R08
-  | 5 -> Reg R09
-  | _ -> Ind3 (Lit (Int64.of_int (8 * (n-8))), Rbp)
-  (* Puts the rest on the stack *)
 
 (* We suggest that you create a helper function that computes the
   stack layout for a given function declaration.

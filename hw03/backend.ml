@@ -266,8 +266,14 @@ let compile_lbl_block lbl ctxt blk : elem =
     is also stored as a stack slot.
   - see the discusion about locals *)
 (* let stack_layout args (block, lbled_blocks) : layout = *)
-let stack_layout args (block, lbled_blocks) : layout =
-  failwith "stack_layout unimplemented"
+
+(* Only works for first block at the moment *)
+let stack_layout (args:'a list) ((block:Ll.block), (lbled_blocks : (lbl*block) list)) : layout =
+  let rec add_to_stack (insns: (uid*insn) list) (i:int) : layout =
+    match insns with
+    | (id, instr)::tl -> (id, Ind3 (Lit (Int64.of_int (8 * (i-8))), Rbp)) :: add_to_stack tl (i+1)
+    | _ -> []
+  in add_to_stack block.insns 1
 
 (* The code for the entry-point of a function must do several things:
   - since our simple compiler maps local %uids to stack slots,
@@ -289,6 +295,7 @@ let stack_layout args (block, lbled_blocks) : layout =
     f_cfg: control flow graph
  *)
 let compile_fdecl (tdecls : (Ll.tid * Ll.ty) list) (name : string) { f_ty; f_param; f_cfg } : X86.prog =
+  (* stack_layout [] f_cfg; *)
   let open Asm in
   [
     {lbl = name; global = true; asm =

@@ -86,7 +86,7 @@ let compile_operand ctxt dest : Ll.operand -> ins = function
   | Null    -> (Movq, [Imm (Lit 0L); dest])
   | Const i -> (Movq, [Imm (Lit i); dest])
   | Gid gid -> failwith "Implement compile_operand Gid"
-  | Id uid  -> (Movq, [lookup ctxt.layout uid])
+  | Id uid  -> (Movq, [lookup ctxt.layout uid; dest])
 
 (* Compiling call  ---------------------------------------------------------- *)
 

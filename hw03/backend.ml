@@ -228,15 +228,25 @@ let compile_insn ctxt ((uid:uid), (i:Ll.insn)) : X86.ins list =
   | Binop (binop, typ, op1, op2) ->
     let binopcode = compile_bop binop in
     let x_op1 = compile_operand ctxt (Reg R10) op1 in
-    let x_op2 = compile_operand ctxt (Reg R11) op2 in
+    let reg_op2 = match binopcode with
+      | Shlq | Shrq | Sarq -> Rcx
+      | _ -> R11 in
+    let x_op2 = compile_operand ctxt (Reg reg_op2) op2 in
     [
       x_op1;
       x_op2;
-      (binopcode, [~%R10; ~%R11]);
-      (* (Movq, [~%R11; ~%R11]); *)
-      (Movq, [~%R11; lookup ctxt.layout uid]);
+      (binopcode, [~%reg_op2; ~%R10]);
+      (Movq, [~%R10; lookup ctxt.layout uid]);
     ]
   | _ -> failwith "unimplemented instruction"
+
+(* Debug function *)
+let rec print_layout (layout : layout) : unit =
+  match layout with
+  | (uid, op)::tl -> 
+    print_string (uid ^ ", " ^ (string_of_operand op) ^ "\n"); 
+    print_layout tl
+  | [] -> print_string ""
 
 (* Compile block terminators is not too difficult:
   - Ret should properly exit the function: freeing stack space,
@@ -246,12 +256,31 @@ let compile_insn ctxt ((uid:uid), (i:Ll.insn)) : X86.ins list =
   - Br should jump
 
   - Cbr branch should treat its operand as a boolean conditional *)
+  (* type terminator =
+     | Ret of ty * operand option
+     | Br of lbl
+     | Cbr of operand * lbl * lbl *)
 let compile_terminator (ctxt:ctxt) (t: (Ll.uid * Ll.terminator)) : X86.ins list =
   let open X86.Asm in
-  [
-    (Movq, [~$14; ~%Rax]);
+  let open X86 in
+  let get_op = function (* Move the operand option into Rax where applicable *)
+  | Some op -> [compile_operand ctxt (Reg Rax) op]
+  | None    -> [] in
+  match snd t with
+  | Ret (ty', opoption) -> (* Does not free stack space or restore %rbp yet *)
+    get_op opoption @ [
     (Retq, [])
-  ]
+    ]
+  | Br lbl -> 
+    [(Jmp, [Imm (Lbl (Platform.mangle lbl))])]
+  | Cbr (op, lbl1, lbl2) ->
+    let op' = [compile_operand ctxt (Reg R11) op] in
+    op' @ [
+      (Movq, [~$0; ~%R10]);
+      (Cmpq, [~%R10; ~%R11]);
+      (J Eq, [Imm (Lbl (Platform.mangle lbl1))]);
+      (Jmp,  [Imm (Lbl (Platform.mangle lbl2))])
+    ]
 
 (* Compiling blocks --------------------------------------------------------- *)
 
@@ -307,11 +336,11 @@ let compile_fdecl (tdecls : (Ll.tid * Ll.ty) list) (name : string) { f_ty; f_par
   let block_layout = stack_layout [] f_cfg in
   let open Asm in
   match f_cfg with (blk, blk_lst) ->
-  [
+  let x = [
     {lbl = name; global = true; asm =
       Text (compile_block { tdecls = tdecls; layout = block_layout} blk)
-    }
-  ]
+    } (* Debug: Prints the contents of the stack layout *)
+  ] in print_layout block_layout; x
 
 (* compile_gdecl ------------------------------------------------------------ *)
 (* Compile a global value into an X86 global data declaration and map

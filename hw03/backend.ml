@@ -205,7 +205,7 @@ let arg_loc (n:int) : operand =
   | 4 -> Reg R08
   | 5 -> Reg R09
   (* Puts the rest on the stack *)
-  | _ -> Ind3 (Lit (Int64.of_int (8 * (n-8))), Rbp)
+  | _ -> Ind3 (Lit (Int64.of_int (8 * (n-4))), Rbp)
 
 let compile_bop : Ll.bop -> X86.opcode = function
   | Add  -> Addq
@@ -233,7 +233,8 @@ let compile_insn ctxt ((uid:uid), (i:Ll.insn)) : X86.ins list =
       x_op1;
       x_op2;
       (binopcode, [~%R10; ~%R11]);
-      (Movq, [~%R11; lookup ctxt.layout uid])
+      (* (Movq, [~%R11; ~%R11]); *)
+      (Movq, [~%R11; lookup ctxt.layout uid]);
     ]
   | _ -> failwith "unimplemented instruction"
 
@@ -245,14 +246,22 @@ let compile_insn ctxt ((uid:uid), (i:Ll.insn)) : X86.ins list =
   - Br should jump
 
   - Cbr branch should treat its operand as a boolean conditional *)
-let compile_terminator ctxt t =
-  failwith "compile_terminator not implemented"
+let compile_terminator (ctxt:ctxt) (t: (Ll.uid * Ll.terminator)) : X86.ins list =
+  let open X86.Asm in
+  [
+    (Movq, [~$14; ~%Rax]);
+    (Retq, [])
+  ]
 
 (* Compiling blocks --------------------------------------------------------- *)
 
 (* We have left this helper function here for you to complete. *)
-let compile_block ctxt blk : ins list =
-  failwith "compile_block not implemented"
+let compile_block (ctxt:ctxt) (blk:Ll.block) : X86.ins list =
+  let rec for_instr (insns: (Ll.uid * insn) list) =
+    match insns with
+    | h::tl -> compile_insn ctxt h @ for_instr tl
+    | [] -> []
+  in (for_instr blk.insns) @ compile_terminator ctxt blk.term
 
 let compile_lbl_block lbl ctxt blk : elem =
   Asm.text lbl (compile_block ctxt blk)
@@ -271,7 +280,7 @@ let compile_lbl_block lbl ctxt blk : elem =
 let stack_layout (args:'a list) ((block:Ll.block), (lbled_blocks : (lbl*block) list)) : layout =
   let rec add_to_stack (insns: (uid*insn) list) (i:int) : layout =
     match insns with
-    | (id, instr)::tl -> (id, Ind3 (Lit (Int64.of_int (8 * (i-8))), Rbp)) :: add_to_stack tl (i+1)
+    | (id, instr)::tl -> (id, Ind3 (Lit (Int64.of_int (-8 * (i) )), Rsp)) :: add_to_stack tl (i+1)
     | _ -> []
   in add_to_stack block.insns 1
 
@@ -295,16 +304,12 @@ let stack_layout (args:'a list) ((block:Ll.block), (lbled_blocks : (lbl*block) l
     f_cfg: control flow graph
  *)
 let compile_fdecl (tdecls : (Ll.tid * Ll.ty) list) (name : string) { f_ty; f_param; f_cfg } : X86.prog =
-  (* stack_layout [] f_cfg; *)
+  let block_layout = stack_layout [] f_cfg in
   let open Asm in
+  match f_cfg with (blk, blk_lst) ->
   [
     {lbl = name; global = true; asm =
-      Text
-      [
-        (Movq, [~$5; ~%Rax]); (* Temporary code *)
-        (Addq, [~$9; ~%Rax]);
-        (Retq, [])
-      ]
+      Text (compile_block { tdecls = tdecls; layout = block_layout} blk)
     }
   ]
 

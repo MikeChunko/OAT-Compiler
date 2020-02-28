@@ -151,10 +151,8 @@ let rec size_ty tdecls t : int =
       picks out the n'th element of the struct. [ NOTE: the offset
       within the struct of the n'th element is determined by the
       sizes of the types of the previous elements ]
-
     - if t is an array, the index can be any operand, and its
       value determines the offset within the array.
-
     - if t is any other type, the path is invalid
 
   5. if the index is valid, the remainder of the path is computed as
@@ -163,32 +161,7 @@ let rec size_ty tdecls t : int =
 let compile_gep ctxt (op : Ll.ty * Ll.operand) (path: Ll.operand list) : ins list =
   failwith "compile_gep not implemented"
 
-(* compiling instructions  -------------------------------------------------- *)
-
-(* The result of compiling a single LLVM instruction might be many x86
-  instructions.  We have not determined the structure of this code
-  for you. Some of the instructions require only a couple assembly
-  instructions, while others require more.  We have suggested that
-  you need at least compile_operand, compile_call, and compile_gep
-  helpers; you may introduce more as you see fit.
-
-  Here are a few notes:
-
-  - Icmp:  the Set instruction may be of use.  Depending on how you
-    compile Cbr, you may want to ensure that the value produced by
-    Icmp is exactly 0 or 1.
-
-  - Load & Store: these need to dereference the pointers. Const and
-    Null operands aren't valid pointers.  Don't forget to
-    Platform.mangle the global identifier.
-
-  - Alloca: needs to return a pointer into the stack
-
-  - Bitcast: does nothing interesting at the assembly level *)
-let compile_insn ctxt (uid, i) : X86.ins list =
-  failwith "compile_insn not implemented"
-
-(* Compiling terminators  --------------------------------------------------- *)
+(* Compiling instructions  -------------------------------------------------- *)
 
 (* This helper function computes the location of the nth incoming
   function argument: either in a register or relative to %rbp,
@@ -222,6 +195,22 @@ let get_uid : Ll.operand -> uid = function
   | Id uid -> uid
   | _      -> failwith "expected uid"
 
+(* The result of compiling a single LLVM instruction might be many x86
+  instructions.  We have not determined the structure of this code
+  for you. Some of the instructions require only a couple assembly
+  instructions, while others require more.  We have suggested that
+  you need at least compile_operand, compile_call, and compile_gep
+  helpers; you may introduce more as you see fit.
+
+  Here are a few notes:
+  - Icmp:  the Set instruction may be of use.  Depending on how you
+    compile Cbr, you may want to ensure that the value produced by
+    Icmp is exactly 0 or 1.
+  - Load & Store: these need to dereference the pointers. Const and
+    Null operands aren't valid pointers.  Don't forget to
+    Platform.mangle the global identifier.
+  - Alloca: needs to return a pointer into the stack
+  - Bitcast: does nothing interesting at the assembly level *)
 let compile_insn ctxt ((uid:uid), (i:Ll.insn)) : X86.ins list =
   let open X86.Asm in
   match i with
@@ -236,50 +225,48 @@ let compile_insn ctxt ((uid:uid), (i:Ll.insn)) : X86.ins list =
       x_op1;
       x_op2;
       (binopcode, [~%reg_op2; ~%R10]);
-      (Movq, [~%R10; lookup ctxt.layout uid]);
+      (Movq,      [~%R10; lookup ctxt.layout uid]);
     ]
   | _ -> failwith "unimplemented instruction"
 
 (* Debug function *)
 let rec print_layout (layout : layout) : unit =
   match layout with
-  | (uid, op)::tl -> 
-    print_string (uid ^ ", " ^ (string_of_operand op) ^ "\n"); 
+  | (uid, op)::tl ->
+    print_string (uid ^ ", " ^ (string_of_operand op) ^ "\n");
     print_layout tl
   | [] -> print_string ""
+
+(* Compiling terminators  --------------------------------------------------- *)
 
 (* Compile block terminators is not too difficult:
   - Ret should properly exit the function: freeing stack space,
     restoring the value of %rbp, and putting the return value (if
     any) in %rax.
-
   - Br should jump
-
   - Cbr branch should treat its operand as a boolean conditional *)
-  (* type terminator =
-     | Ret of ty * operand option
-     | Br of lbl
-     | Cbr of operand * lbl * lbl *)
+(* type terminator =
+   | Ret of ty * operand option
+   | Br of lbl
+   | Cbr of operand * lbl * lbl *)
 let compile_terminator (ctxt:ctxt) (t: (Ll.uid * Ll.terminator)) : X86.ins list =
   let open X86.Asm in
-  let open X86 in
   let get_op = function (* Move the operand option into Rax where applicable *)
   | Some op -> [compile_operand ctxt (Reg Rax) op]
   | None    -> [] in
   match snd t with
   | Ret (ty', opoption) -> (* Does not free stack space or restore %rbp yet *)
     get_op opoption @ [
-    (Retq, [])
+      (Retq, [])
     ]
-  | Br lbl -> 
+  | Br lbl -> (* Labels are not yet resolved in the stack layout. May not actually work *)
     [(Jmp, [Imm (Lbl (Platform.mangle lbl))])]
-  | Cbr (op, lbl1, lbl2) ->
+  | Cbr (op, lbl1, lbl2) -> (* Labels are not yet resolved in the stack layout. May not actually work *)
     let op' = [compile_operand ctxt (Reg R11) op] in
     op' @ [
-      (Movq, [~$0; ~%R10]);
-      (Cmpq, [~%R10; ~%R11]);
-      (J Eq, [Imm (Lbl (Platform.mangle lbl1))]);
-      (Jmp,  [Imm (Lbl (Platform.mangle lbl2))])
+      (Cmpq,  [~$0; ~%R11]);
+      (J Neq, [Imm (Lbl (Platform.mangle lbl1))]);
+      (Jmp,   [Imm (Lbl (Platform.mangle lbl2))])
     ]
 
 (* Compiling blocks --------------------------------------------------------- *)
@@ -289,7 +276,7 @@ let compile_block (ctxt:ctxt) (blk:Ll.block) : X86.ins list =
   let rec for_instr (insns: (Ll.uid * insn) list) =
     match insns with
     | h::tl -> compile_insn ctxt h @ for_instr tl
-    | [] -> []
+    | []    -> []
   in (for_instr blk.insns) @ compile_terminator ctxt blk.term
 
 let compile_lbl_block lbl ctxt blk : elem =
@@ -310,7 +297,7 @@ let stack_layout (args:'a list) ((block:Ll.block), (lbled_blocks : (lbl*block) l
   let rec add_to_stack (insns: (uid*insn) list) (i:int) : layout =
     match insns with
     | (id, instr)::tl -> (id, Ind3 (Lit (Int64.of_int (-8 * (i) )), Rsp)) :: add_to_stack tl (i+1)
-    | _ -> []
+    | _               -> []
   in add_to_stack block.insns 1
 
 (* The code for the entry-point of a function must do several things:
@@ -327,11 +314,9 @@ let stack_layout (args:'a list) ((block:Ll.block), (lbled_blocks : (lbl*block) l
 
   - the function entry code should allocate the stack storage needed
     to hold all of the local stack slots. *)
-(*
-    f_ty: return type
+(*  f_ty: return type
     f_param: parameter list (can be of many types)
-    f_cfg: control flow graph
- *)
+    f_cfg: control flow graph *)
 let compile_fdecl (tdecls : (Ll.tid * Ll.ty) list) (name : string) { f_ty; f_param; f_cfg } : X86.prog =
   let block_layout = stack_layout [] f_cfg in
   let open Asm in
@@ -355,6 +340,6 @@ and compile_gdecl (_, g) = compile_ginit g
 
 (* compile_prog ------------------------------------------------------------- *)
 let compile_prog {tdecls; gdecls; fdecls} : X86.prog =
-  let g = fun (lbl, gdecl) -> Asm.data (Platform.mangle lbl) (compile_gdecl gdecl) in
+  let g = fun (lbl, gdecl)  -> Asm.data (Platform.mangle lbl) (compile_gdecl gdecl) in
   let f = fun (name, fdecl) -> compile_fdecl tdecls name fdecl in
   (List.map g gdecls) @ (List.map f fdecls |> List.flatten)

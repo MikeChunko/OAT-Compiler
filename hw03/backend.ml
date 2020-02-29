@@ -214,7 +214,7 @@ let get_uid : Ll.operand -> uid = function
 let compile_insn ctxt ((uid:uid), (i:Ll.insn)) : X86.ins list =
   let open X86.Asm in
   match i with
-  | Binop (binop, typ, op1, op2) ->
+  | Binop (binop, _, op1, op2) ->
     let binopcode = compile_bop binop in
     let x_op1 = compile_operand ctxt (Reg R10) op1 in
     let reg_op2 = match binopcode with
@@ -226,6 +226,17 @@ let compile_insn ctxt ((uid:uid), (i:Ll.insn)) : X86.ins list =
       x_op2;
       (binopcode, [~%reg_op2; ~%R10]);
       (Movq,      [~%R10; lookup ctxt.layout uid]);
+    ]
+  | Icmp (cnd, _, op1, op2) ->
+    let x_op1 = compile_operand ctxt (Reg R10) op1 in
+    let x_op2 = compile_operand ctxt (Reg R11) op2 in
+    [
+      x_op1;
+      x_op2;
+      (Movq, [~$0; ~%R12]);
+      (Cmpq, [~%R11; ~%R10]);
+      (Set (compile_cnd cnd), [~%R12]);
+      (Movq, [~%R12; lookup ctxt.layout uid]);
     ]
   | _ -> failwith "unimplemented instruction"
 

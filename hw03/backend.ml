@@ -238,7 +238,12 @@ let compile_insn ctxt ((uid:uid), (i:Ll.insn)) : X86.ins list =
       (Set (compile_cnd cnd), [~%R12]);
       (Movq, [~%R12; lookup ctxt.layout uid]);
     ]
-  | _ -> failwith "unimplemented instruction"
+  | Load (typ, op) -> failwith "Load unimplemented"
+  | Store (typ, op1, op2) -> failwith "Store unimplemented"
+  | Alloca (typ) -> failwith "Alloca unimplemented"
+  | Bitcast (typ1, op, typ2) -> failwith "Bitcast unimplemented"
+  | Call (typ, op, lst) -> failwith "Call unimplemented"
+  | Gep (typ, op, oplst) -> failwith "Gep unimplemented"
 
 (* Debug function *)
 let rec print_layout (layout : layout) : unit =

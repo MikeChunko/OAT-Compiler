@@ -14,5 +14,5 @@ let icmp_tests =
 ; "llprograms/icmp3.ll", 1L ]
 
 let provided_tests : suite = [
-	GradedTest ("icmp tests", 3, executed icmp_tests)
+	GradedTest ("icmp tests", 0, executed icmp_tests)
 ]

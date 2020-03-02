@@ -262,13 +262,14 @@ let compile_insn ctxt ((uid:uid), (i:Ll.insn)) : X86.ins list =
       ])
   | Alloca (typ) ->
     let x_op1 = lookup ctxt.layout uid in
-    let x_op2 = (match x_op1 with
-      | Ind3 ((Lit i), r) -> Ind3 ((Lit (Int64.sub i  8L)), r)
+    let (i, r, x_op2) = (match x_op1 with
+      | Ind3 ((Lit i), r) -> (Int64.sub i 8L, r, Ind3 ((Lit (Int64.sub i 8L)), r))
       | _ -> failwith "Alloca: Something went wrong") in
     [
-      (Movq, [~$9; x_op2]);
-      (Movq, [x_op2; ~%R10]);
-      (Movq, [~%R10; x_op1])
+      (Movq, [~$99; x_op2]);
+      (Movq, [~$(Int64.to_int i); ~%R10]);
+      (Movq, [Ind3 (Lit (-16L), Rsp); ~%R11]); (* Temp: Gets the value stored in the pointer *)
+      (Movq, [~%R11; x_op1])
     ]
   | Bitcast (typ1, op, typ2) -> failwith "Bitcast unimplemented"
   | Call (typ, op, lst) -> failwith "Call unimplemented"

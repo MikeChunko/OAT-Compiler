@@ -85,7 +85,7 @@ let lookup m x = List.assoc x m
 let compile_operand ctxt dest : Ll.operand -> ins = function
   | Null    -> (Movq, [Imm (Lit 0L); dest])
   | Const i -> (Movq, [Imm (Lit i); dest])
-  | Gid gid -> failwith "Implement compile_operand Gid"
+  | Gid gid -> (Movq, [Ind3 (Lbl gid, Rip); dest])
   | Id uid  -> (Movq, [lookup ctxt.layout uid; dest])
 
 (* Compiling call  ---------------------------------------------------------- *)
@@ -238,15 +238,38 @@ let compile_insn ctxt ((uid:uid), (i:Ll.insn)) : X86.ins list =
       (Set (compile_cnd cnd), [~%R12]);
       (Movq, [~%R12; lookup ctxt.layout uid]);
     ]
-  | Load (typ, op) ->
+  | Load (_, op) ->
     (match op with
     | Const _ | Null -> failwith "Load: Invalid pointer"
-    | _ -> failwith "Load unimplemented")
+    | _ -> 
+      let x_op = compile_operand ctxt (Reg R10) op in 
+      [
+        x_op;
+        (Movq, [~%R10; ~%R11]);
+        (Movq, [~%R11; lookup ctxt.layout uid])
+      ])
   | Store (typ, op1, op2) ->
+    let x_op1 = compile_operand ctxt (Reg R10) op1 in
     (match op2 with
     | Const _ | Null -> failwith "Store: Invalid pointer"
-    | _ -> failwith "Store unimplemented")
-  | Alloca (typ) -> failwith "Alloca unimplemented"
+    | Gid g -> failwith "Store: Gid store unimplemented"
+    | Id  u -> 
+      let x_op2 = compile_operand ctxt (Reg R11) op2 in
+      [
+        x_op1;
+        x_op2;
+        (Movq, [~%R10; Ind2 R11])
+      ])
+  | Alloca (typ) ->
+    let x_op1 = lookup ctxt.layout uid in
+    let x_op2 = (match x_op1 with
+      | Ind3 ((Lit i), r) -> Ind3 ((Lit (Int64.sub i  8L)), r)
+      | _ -> failwith "Alloca: Something went wrong") in
+    [
+      (Movq, [~$9; x_op2]);
+      (Movq, [x_op2; ~%R10]);
+      (Movq, [~%R10; x_op1])
+    ]
   | Bitcast (typ1, op, typ2) -> failwith "Bitcast unimplemented"
   | Call (typ, op, lst) -> failwith "Call unimplemented"
   | Gep (typ, op, oplst) -> failwith "Gep unimplemented"
@@ -275,7 +298,7 @@ let compile_terminator (ctxt:ctxt) (t: (Ll.uid * Ll.terminator)) : X86.ins list 
   let open X86.Asm in
   let get_op r = function (* Move the operand option into Reg r where applicable *)
   | Some op -> [compile_operand ctxt (Reg r) op]
-  | None    -> [] in
+  | None    -> [compile_operand ctxt (Reg r) Null] in
   match snd t with
   | Ret (ty', opoption) -> (* Does not free stack space or restore %rbp yet *)
     get_op Rax opoption @ [
@@ -315,6 +338,9 @@ let compile_lbl_block lbl ctxt blk : elem =
 let stack_layout (args:'a list) ((block:Ll.block), (lbled_blocks:(lbl*block) list)) : layout =
   let rec add_to_stack (insns:(uid*insn) list) (lbled_blocks:(lbl*block) list) (i:int) : layout =
     match insns with
+    | (id, (Alloca typ))::tl -> let n = (size_ty [] typ) / 8 in
+      (id, Ind3 (Lit (Int64.of_int (-8 * i)), Rsp))::
+      (id ^ "alloca_", Ind3 (Lit (Int64.of_int (-8 * (i + 1))), Rsp))::add_to_stack tl lbled_blocks (i+1+n)
     | (id, instr)::tl -> (id, Ind3 (Lit (Int64.of_int (-8 * i)), Rsp))::add_to_stack tl lbled_blocks (i+1)
     | _ -> match lbled_blocks with
       | (_,blk)::blk_tl -> add_to_stack blk.insns blk_tl i
@@ -349,7 +375,7 @@ let compile_fdecl (tdecls:(Ll.tid * Ll.ty) list) (name:string) {f_ty; f_param; f
       | [] -> []
       | (lbl,blk)::tl -> compile_fdecl' tdecls lbl {f_ty; f_param; f_cfg=(blk, tl)} layout)
     in x @ y in
-  compile_fdecl' tdecls name {f_ty; f_param; f_cfg} block_layout
+  print_layout block_layout; compile_fdecl' tdecls name {f_ty; f_param; f_cfg} block_layout
 
 (* compile_gdecl ------------------------------------------------------------ *)
 (* Compile a global value into an X86 global data declaration and map

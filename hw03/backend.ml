@@ -269,7 +269,11 @@ let compile_insn ctxt ((uid:uid), (i:Ll.insn)) : X86.ins list =
       (Addq, [~%Rsp; ~%R10]);
       (Movq, [~%R10; x_op1]) (* Returns an absolute address to the pointer *)
     ]
-  | Bitcast (typ1, op, typ2) -> failwith "Bitcast unimplemented"
+  | Bitcast (typ1, op, typ2) -> (* I think incomplete but it works for the basic level *)
+    [compile_operand ctxt (Reg R10) op] @
+    [
+      (Movq, [~%R10; lookup ctxt.layout uid])
+    ]
   | Call (typ, op, lst) -> failwith "Call unimplemented"
   | Gep (typ, op, oplst) -> failwith "Gep unimplemented"
 

@@ -216,23 +216,18 @@ let compile_insn ctxt ((uid:uid), (i:Ll.insn)) : X86.ins list =
   match i with
   | Binop (binop, _, op1, op2) ->
     let binopcode = compile_bop binop in
-    let x_op1 = compile_operand ctxt (Reg R10) op1 in
     let reg_op2 = match binopcode with
       | Shlq | Shrq | Sarq -> Rcx
       | _ -> R11 in
-    let x_op2 = compile_operand ctxt (Reg reg_op2) op2 in
     [
-      x_op1;
-      x_op2;
+      (compile_operand ctxt (Reg R10) op1);
+      (compile_operand ctxt (Reg reg_op2) op2);
       (binopcode, [~%reg_op2; ~%R10]);
       (Movq,      [~%R10; lookup ctxt.layout uid]);
     ]
-  | Icmp (cnd, _, op1, op2) ->
-    let x_op1 = compile_operand ctxt (Reg R10) op1 in
-    let x_op2 = compile_operand ctxt (Reg R11) op2 in
-    [
-      x_op1;
-      x_op2;
+  | Icmp (cnd, _, op1, op2) -> [
+      (compile_operand ctxt (Reg R10) op1);
+      (compile_operand ctxt (Reg R11) op2);
       (Movq, [~$0; ~%R12]);
       (Cmpq, [~%R11; ~%R10]);
       (Set (compile_cnd cnd), [~%R12]);
@@ -269,17 +264,15 @@ let compile_insn ctxt ((uid:uid), (i:Ll.insn)) : X86.ins list =
       (Addq, [~%Rsp; ~%R10]);
       (Movq, [~%R10; x_op1]) (* Returns an absolute address to the pointer *)
     ]
-  | Bitcast (typ1, op, typ2) -> (* I think incomplete but it works for the basic level *)
-    [compile_operand ctxt (Reg R10) op] @
-    [
+  | Bitcast (typ1, op, typ2) -> [ (* I think incomplete but it works for the basic level *)
+      (compile_operand ctxt (Reg R10) op);
       (Movq, [~%R10; lookup ctxt.layout uid])
     ]
   | Call (typ, op, lst) -> failwith "Call unimplemented"
   | Gep (typ, op, oplst) -> failwith "Gep unimplemented"
 
 (* Debug function *)
-let rec print_layout (layout : layout) : unit =
-  match layout with
+let rec print_layout : layout -> unit = function
   | (uid, op)::tl ->
     print_string (uid ^ ", " ^ (string_of_operand op) ^ "\n");
     print_layout tl
@@ -300,18 +293,19 @@ let rec print_layout (layout : layout) : unit =
 let compile_terminator (ctxt:ctxt) (t: (Ll.uid * Ll.terminator)) : X86.ins list =
   let open X86.Asm in
   let get_op r = function (* Move the operand option into Reg r where applicable *)
-  | Some op -> [compile_operand ctxt (Reg r) op]
-  | None    -> [compile_operand ctxt (Reg r) Null] in
+  | Some op -> compile_operand ctxt (Reg r) op
+  | None    -> compile_operand ctxt (Reg r) Null in
   match snd t with
   | Ret (ty', opoption) -> (* Does not free stack space or restore %rbp yet *)
-    get_op Rax opoption @ [
+    [
+      (get_op Rax opoption);
       (Retq, [])
     ]
   | Br lbl -> (* Labels are not yet resolved in the stack layout. May not actually work *)
     [(Jmp, [Imm (Lbl (Platform.mangle lbl))])]
   | Cbr (op, lbl1, lbl2) -> (* Labels are not yet resolved in the stack layout. May not actually work *)
-    let op' = [compile_operand ctxt (Reg R11) op] in
-    op' @ [
+    [
+      (compile_operand ctxt (Reg R11) op);
       (Cmpq,  [~$0; ~%R11]);
       (J Neq, [Imm (Lbl (Platform.mangle lbl1))]);
       (Jmp,   [Imm (Lbl (Platform.mangle lbl2))])
@@ -321,8 +315,7 @@ let compile_terminator (ctxt:ctxt) (t: (Ll.uid * Ll.terminator)) : X86.ins list 
 
 (* We have left this helper function here for you to complete. *)
 let compile_block (ctxt:ctxt) (blk:Ll.block) : X86.ins list =
-  let rec for_instr (insns: (Ll.uid * insn) list) =
-    match insns with
+  let rec for_instr : (Ll.uid * Ll.insn) list -> X86.ins list = function
     | h::tl -> compile_insn ctxt h @ for_instr tl
     | []    -> []
   in (for_instr blk.insns) @ compile_terminator ctxt blk.term

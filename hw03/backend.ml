@@ -238,8 +238,14 @@ let compile_insn ctxt ((uid:uid), (i:Ll.insn)) : X86.ins list =
       (Set (compile_cnd cnd), [~%R12]);
       (Movq, [~%R12; lookup ctxt.layout uid]);
     ]
-  | Load (typ, op) -> failwith "Load unimplemented"
-  | Store (typ, op1, op2) -> failwith "Store unimplemented"
+  | Load (typ, op) ->
+    (match op with
+    | Const _ | Null -> failwith "Load: Invalid pointer"
+    | _ -> failwith "Load unimplemented")
+  | Store (typ, op1, op2) ->
+    (match op2 with
+    | Const _ | Null -> failwith "Store: Invalid pointer"
+    | _ -> failwith "Store unimplemented")
   | Alloca (typ) -> failwith "Alloca unimplemented"
   | Bitcast (typ1, op, typ2) -> failwith "Bitcast unimplemented"
   | Call (typ, op, lst) -> failwith "Call unimplemented"
@@ -251,7 +257,7 @@ let rec print_layout (layout : layout) : unit =
   | (uid, op)::tl ->
     print_string (uid ^ ", " ^ (string_of_operand op) ^ "\n");
     print_layout tl
-  | [] -> print_string ""
+  | [] -> print_string "end of layout.\n"
 
 (* Compiling terminators  --------------------------------------------------- *)
 
@@ -267,12 +273,12 @@ let rec print_layout (layout : layout) : unit =
    | Cbr of operand * lbl * lbl *)
 let compile_terminator (ctxt:ctxt) (t: (Ll.uid * Ll.terminator)) : X86.ins list =
   let open X86.Asm in
-  let get_op = function (* Move the operand option into Rax where applicable *)
-  | Some op -> [compile_operand ctxt (Reg Rax) op]
+  let get_op r = function (* Move the operand option into Reg r where applicable *)
+  | Some op -> [compile_operand ctxt (Reg r) op]
   | None    -> [] in
   match snd t with
   | Ret (ty', opoption) -> (* Does not free stack space or restore %rbp yet *)
-    get_op opoption @ [
+    get_op Rax opoption @ [
       (Retq, [])
     ]
   | Br lbl -> (* Labels are not yet resolved in the stack layout. May not actually work *)
@@ -306,15 +312,14 @@ let compile_lbl_block lbl ctxt blk : elem =
   - in this (inefficient) compilation strategy, each local id
     is also stored as a stack slot.
   - see the discusion about locals *)
-(* let stack_layout args (block, lbled_blocks) : layout = *)
-
-(* Only works for first block at the moment *)
-let stack_layout (args:'a list) ((block:Ll.block), (lbled_blocks : (lbl*block) list)) : layout =
-  let rec add_to_stack (insns: (uid*insn) list) (i:int) : layout =
+let stack_layout (args:'a list) ((block:Ll.block), (lbled_blocks:(lbl*block) list)) : layout =
+  let rec add_to_stack (insns:(uid*insn) list) (lbled_blocks:(lbl*block) list) (i:int) : layout =
     match insns with
-    | (id, instr)::tl -> (id, Ind3 (Lit (Int64.of_int (-8 * (i) )), Rsp)) :: add_to_stack tl (i+1)
-    | _               -> []
-  in add_to_stack block.insns 1
+    | (id, instr)::tl -> (id, Ind3 (Lit (Int64.of_int (-8 * i)), Rsp))::add_to_stack tl lbled_blocks (i+1)
+    | _ -> match lbled_blocks with
+      | (_,blk)::blk_tl -> add_to_stack blk.insns blk_tl i
+      | _ -> []
+  in add_to_stack block.insns lbled_blocks 1
 
 (* The code for the entry-point of a function must do several things:
   - since our simple compiler maps local %uids to stack slots,
@@ -330,18 +335,21 @@ let stack_layout (args:'a list) ((block:Ll.block), (lbled_blocks : (lbl*block) l
 
   - the function entry code should allocate the stack storage needed
     to hold all of the local stack slots. *)
-(*  f_ty: return type
-    f_param: parameter list (can be of many types)
-    f_cfg: control flow graph *)
-let compile_fdecl (tdecls : (Ll.tid * Ll.ty) list) (name : string) { f_ty; f_param; f_cfg } : X86.prog =
+let compile_fdecl (tdecls:(Ll.tid * Ll.ty) list) (name:string) {f_ty; f_param; f_cfg} : X86.prog =
   let block_layout = stack_layout [] f_cfg in
   let open Asm in
-  match f_cfg with (blk, blk_lst) ->
-  let x = [
-    {lbl = name; global = true; asm =
-      Text (compile_block { tdecls = tdecls; layout = block_layout} blk)
-    } (* Debug: Prints the contents of the stack layout *)
-  ] in print_layout block_layout; x
+  let rec compile_fdecl' (tdecls:(Ll.tid * Ll.ty) list) (name:string) {f_ty; f_param; f_cfg} (layout:layout): X86.prog =
+    match f_cfg with (blk, blk_lst) ->
+    let x = [
+      {lbl = name; global = true; asm =
+        Text (compile_block { tdecls = tdecls; layout = block_layout} blk)
+      }
+    ] in
+    let y = (match blk_lst with
+      | [] -> []
+      | (lbl,blk)::tl -> compile_fdecl' tdecls lbl {f_ty; f_param; f_cfg=(blk, tl)} layout)
+    in x @ y in
+  compile_fdecl' tdecls name {f_ty; f_param; f_cfg} block_layout
 
 (* compile_gdecl ------------------------------------------------------------ *)
 (* Compile a global value into an X86 global data declaration and map

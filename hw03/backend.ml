@@ -239,37 +239,35 @@ let compile_insn ctxt ((uid:uid), (i:Ll.insn)) : X86.ins list =
       (Movq, [~%R12; lookup ctxt.layout uid]);
     ]
   | Load (_, op) ->
+    [compile_operand ctxt (Reg R10) op] @
     (match op with
     | Const _ | Null -> failwith "Load: Invalid pointer"
-    | _ -> 
-      let x_op = compile_operand ctxt (Reg R10) op in 
-      [
-        x_op;
-        (Movq, [~%R10; ~%R11]);
+    | Gid g -> [
+        (Movq, [~%R10; lookup ctxt.layout uid])
+      ]
+    | Id u  -> [
+        (Movq, [Ind2 R10; ~%R11]);
         (Movq, [~%R11; lookup ctxt.layout uid])
       ])
-  | Store (typ, op1, op2) ->
-    let x_op1 = compile_operand ctxt (Reg R10) op1 in
+  | Store (_, op1, op2) ->
+    [compile_operand ctxt (Reg R10) op1] @
     (match op2 with
     | Const _ | Null -> failwith "Store: Invalid pointer"
     | Gid g -> failwith "Store: Gid store unimplemented"
-    | Id  u -> 
-      let x_op2 = compile_operand ctxt (Reg R11) op2 in
-      [
-        x_op1;
-        x_op2;
+    | Id u  ->
+      [compile_operand ctxt (Reg R11) op2] @ [
         (Movq, [~%R10; Ind2 R11])
       ])
   | Alloca (typ) ->
     let x_op1 = lookup ctxt.layout uid in
-    let (i, r, x_op2) = (match x_op1 with
-      | Ind3 ((Lit i), r) -> (Int64.sub i 8L, r, Ind3 ((Lit (Int64.sub i 8L)), r))
+    let (i, x_op2) = (match x_op1 with
+      | Ind3 ((Lit i'), r) -> (Int64.sub i' 8L, Ind3 ((Lit (Int64.sub i' 8L)), r))
       | _ -> failwith "Alloca: Something went wrong") in
     [
-      (Movq, [~$99; x_op2]);
+      (Movq, [~$0; x_op2]); (* Initialized pointed-to value with 0 *)
       (Movq, [~$(Int64.to_int i); ~%R10]);
-      (Movq, [Ind3 (Lit (-16L), Rsp); ~%R11]); (* Temp: Gets the value stored in the pointer *)
-      (Movq, [~%R11; x_op1])
+      (Addq, [~%Rsp; ~%R10]);
+      (Movq, [~%R10; x_op1]) (* Returns an absolute address to the pointer *)
     ]
   | Bitcast (typ1, op, typ2) -> failwith "Bitcast unimplemented"
   | Call (typ, op, lst) -> failwith "Call unimplemented"

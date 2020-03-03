@@ -178,7 +178,7 @@ let arg_loc (n:int) : operand =
   | 4 -> Reg R08
   | 5 -> Reg R09
   (* Puts the rest on the stack *)
-  | _ -> Ind3 (Lit (Int64.of_int (8 * (n-4))), Rbp)
+  | _ -> Ind3 (Lit (Int64.of_int (8 * (n-6))), Rbp)
 
 let compile_bop : Ll.bop -> X86.opcode = function
   | Add  -> Addq
@@ -194,6 +194,31 @@ let compile_bop : Ll.bop -> X86.opcode = function
 let get_uid : Ll.operand -> uid = function
   | Id uid -> uid
   | _      -> failwith "expected uid"
+
+(* 
+      (Pushq, [~%Rax]);
+      (Pushq, [~%Rcx]);
+      (Pushq, [~%Rdx]);
+      (Pushq, [~%Rsi]);
+      (Pushq, [~%Rdi]);
+      (Pushq, [~%Rsp]);
+      (Pushq, [~%R08]);
+      (Pushq, [~%R09]);
+      (Pushq, [~%R10]);
+      (Pushq, [~%R11]);
+
+      (Popq, [~%R11]);
+      (Popq, [~%R10]);
+      (Popq, [~%R09]);
+      (Popq, [~%R08]);
+      (Popq, [~%Rsp]);
+      (Popq, [~%Rdi]);
+      (Popq, [~%Rsi]);
+      (Popq, [~%Rcx]);
+      (Popq, [~%Rdx]);
+      (Popq, [~%Rcx]);
+      (Popq, [~%Rax])
+*)
 
 (* The result of compiling a single LLVM instruction might be many x86
   instructions.  We have not determined the structure of this code
@@ -268,8 +293,87 @@ let compile_insn ctxt ((uid:uid), (i:Ll.insn)) : X86.ins list =
       (compile_operand ctxt (Reg R10) op);
       (Movq, [~%R10; lookup ctxt.layout uid])
     ]
-  | Call (typ, op, lst) -> failwith "Call unimplemented"
+    (* Ind3 (Lit (Int64.of_int (8 * (n-6))), Rsp) *)
+  | Call (typ, op, lst) -> 
+    let rec set_params (n:int) (last:int) = 
+      match n with
+      | last -> []
+      | _ -> (Movq, [Ind3 (Lit (Int64.of_int (-8 * (n+2))), Rbp); arg_loc (n-1)]) :: set_params (n+1) last
+    in
+    let get_label = function
+    | Gid lbl -> lbl
+    | _ -> failwith "unsupported label"
+    in
+    let reg_lst = [
+      Rax; Rcx; Rdx; Rsi; Rdi; Rsp; R08; R09; R10; R11
+    ] in
+    let push_lst = [
+      List.map (fun r -> (Pushq, [~%r])) reg_lst
+    ] in
+    let pop_lst = [
+      List.map (fun r -> (Popq, [~%r])) (List.rev reg_lst)
+    ] in
+    [
+      (* (Movq, [~%Rax; Ind3 (Lit (Int64.of_int (-8 * (List.length lst + 2))), Rbp)]) *)
+    ]
+    @
+    [
+      (*
+      (Pushq, [~%Rax]);
+      (Pushq, [~%Rcx]);
+      *)
+      
+      (Pushq, [~%Rdx]);
+      (Pushq, [~%Rsi]);
+      (Pushq, [~%Rdi]);
+      (Pushq, [~%Rsp]);
+      (Pushq, [~%R08]);
+      (Pushq, [~%R09]);
+      (Pushq, [~%R10]);
+      (Pushq, [~%R11]);
+      
+
+      (* (Callq, [Imm (Lbl (Platform.mangle (get_label op)))]); *)
+      (Pushq, [~%Rbp]);
+      (Movq, [~%Rsp; ~%Rbp]);
+    ] @ set_params 1 (List.length lst) @
+    [
+      (Callq, [Imm (Lbl (Platform.mangle (get_label op)))]);
+      (Popq, [~%Rbp]);
+      (* (Movq, [~%Rax; Ind3 (Lit (Int64.of_int (-8 * (List.length lst + 3))), Rbp)]); *)
+      
+      (Popq, [~%R11]);
+      (Popq, [~%R10]);
+      (Popq, [~%R09]);
+      (Popq, [~%R08]);
+      (Popq, [~%Rsp]);
+      (Popq, [~%Rdi]);
+      (Popq, [~%Rsi]);
+      (Popq, [~%Rdx]);
+      (*
+      (Popq, [~%Rcx]);
+      (Popq, [~%Rax]);
+      *)
+
+      (Movq, [~%Rax; lookup ctxt.layout uid]);
+      (* (Popq, [~%Rax]) *)
+    ]
+    (* 
+    [(Movq, [~$(List.length lst); ~%R12]);
+      
+    ] *)
   | Gep (typ, op, oplst) -> failwith "Gep unimplemented"
+
+let check_call ((uid:uid), (i:Ll.insn)) : string list =
+  let open X86.Asm in
+  match i with
+  | Call (typ, op, lst) -> 
+    let get_label = function
+    | Gid lbl -> lbl
+    | Id lbl -> lbl
+    | _ -> failwith "unsupported label"
+    in [get_label op]
+  | _ -> []
 
 (* Debug function *)
 let rec print_layout : layout -> unit = function
@@ -277,6 +381,11 @@ let rec print_layout : layout -> unit = function
     print_string (uid ^ ", " ^ (string_of_operand op) ^ "\n");
     print_layout tl
   | [] -> print_string "end of layout.\n"
+
+let rec print_strings (lst: string list) =
+  match lst with
+  | h::tl -> print_string h; print_strings tl
+  | [] -> print_string "\n~~~~~~~~~~~~~~~~~BLOCK END~~~~~~~~~~~~~.\n"
 
 (* Compiling terminators  --------------------------------------------------- *)
 
@@ -323,6 +432,13 @@ let compile_block (ctxt:ctxt) (blk:Ll.block) : X86.ins list =
 let compile_lbl_block lbl ctxt blk : elem =
   Asm.text lbl (compile_block ctxt blk)
 
+let compile_fun_block (ctxt:ctxt) (blk:Ll.block) : X86.ins list =
+  let open X86.Asm in
+  [
+    (Movq, [~$42; ~%Rax])
+  ]
+  @ compile_block ctxt blk
+
 (* compile_fdecl ------------------------------------------------------------ *)
 
 (* We suggest that you create a helper function that computes the
@@ -358,13 +474,20 @@ let stack_layout (args:'a list) ((block:Ll.block), (lbled_blocks:(lbl*block) lis
   - the function entry code should allocate the stack storage needed
     to hold all of the local stack slots. *)
 let compile_fdecl (tdecls:(Ll.tid * Ll.ty) list) (name:string) {f_ty; f_param; f_cfg} : X86.prog =
+
   let block_layout = stack_layout [] f_cfg in
   let open Asm in
+  (* Used for determining which blocks are function callees *)
   let rec compile_fdecl' (tdecls:(Ll.tid * Ll.ty) list) (name:string) {f_ty; f_param; f_cfg} (layout:layout): X86.prog =
     match f_cfg with (blk, blk_lst) ->
     let x = [
+      if (name = "main") then 
       {lbl = name; global = true; asm =
         Text (compile_block { tdecls = tdecls; layout = block_layout} blk)
+      }
+      else 
+      {lbl = name; global = true; asm =
+        Text (compile_fun_block { tdecls = tdecls; layout = block_layout} blk)
       }
     ] in
     let y = (match blk_lst with

@@ -323,6 +323,8 @@ let compile_insn ctxt ((uid:uid), (i:Ll.insn)) : X86.ins list =
       (Pushq, [~%R09]);
       (Pushq, [~%R10]);
       (Pushq, [~%R11]);
+      
+      (Movq, [~$(List.length lst); ~%R09]);
     ] @
     [
       (Pushq, [~%Rbp]);
@@ -411,18 +413,39 @@ let compile_block (ctxt:ctxt) (blk:Ll.block) : X86.ins list =
     | h::tl -> compile_insn ctxt h @ for_instr tl
     | []    -> []
   (* Initializes default value for Rax *)
-  in (Movq, [~$0; ~%Rax]) :: (Movq, [~%Rsp; ~%Rbp])
-  :: (for_instr blk.insns) @ compile_terminator ctxt blk.term
+  in (for_instr blk.insns) @ compile_terminator ctxt blk.term
 
 let compile_lbl_block lbl ctxt blk : elem =
   Asm.text lbl (compile_block ctxt blk)
 
 let compile_fun_block (ctxt:ctxt) (blk:Ll.block) : X86.ins list =
+  let split_ret (lst:X86.ins list) : (X86.ins list * X86.ins) =
+    let lst' = List.rev lst in
+    match lst' with
+    | [] -> failwith "Empty block"
+    | h::tl -> (tl, h)
+  in
+  let (lst,ret) = split_ret (compile_block ctxt blk) in
   let open X86.Asm in
   [
-    (Movq, [~$42; ~%Rax])
+    (*
+    (Pushq, [~%R12]);
+    (Pushq, [~%R13]);
+    (Pushq, [~%R14]);
+    (Pushq, [~%R15]);
+    *)
   ]
-  @ compile_block ctxt blk
+  @ lst
+  @ 
+  [
+    (*
+    (Popq, [~%R15]);
+    (Popq, [~%R14]);
+    (Popq, [~%R13]);
+    (Popq, [~%R12]);
+    *)
+  ]
+  @ [ret]
 
 (* compile_fdecl ------------------------------------------------------------ *)
 
@@ -468,7 +491,7 @@ let compile_fdecl (tdecls:(Ll.tid * Ll.ty) list) (name:string) {f_ty; f_param; f
     let x = [
       if (name = "main") then 
       {lbl = name; global = true; asm =
-        Text (compile_block { tdecls = tdecls; layout = block_layout} blk)
+        Text ((Movq, [~$0; ~%Rax]) :: (Movq, [~%Rsp; ~%Rbp]) :: compile_block { tdecls = tdecls; layout = block_layout} blk)
       }
       else 
       {lbl = name; global = true; asm =

@@ -286,7 +286,7 @@ let compile_insn ctxt ((uid:uid), (i:Ll.insn)) : X86.ins list =
     [
       (Movq, [~$0; x_op2]); (* Initialized pointed-to value with 0 *)
       (Movq, [~$(Int64.to_int i); ~%R10]);
-      (Addq, [~%Rsp; ~%R10]);
+      (Addq, [~%Rbp; ~%R10]);
       (Movq, [~%R10; x_op1]) (* Returns an absolute address to the pointer *)
     ]
   | Bitcast (typ1, op, typ2) -> [ (* I think incomplete but it works for the basic level *)
@@ -305,63 +305,45 @@ let compile_insn ctxt ((uid:uid), (i:Ll.insn)) : X86.ins list =
     | _ -> failwith "unsupported label"
     in
     let reg_lst = [
-      Rax; Rcx; Rdx; Rsi; Rdi; Rsp; R08; R09; R10; R11
+      Rax; Rdx; Rcx; Rsi; Rdi; R08; R09; R10; R11
     ] in
-    let push_lst = [
+    let push_lst =
       List.map (fun r -> (Pushq, [~%r])) reg_lst
-    ] in
-    let pop_lst = [
+    in
+    let pop_lst =
       List.map (fun r -> (Popq, [~%r])) (List.rev reg_lst)
-    ] in
+    in
     [
-      (* (Movq, [~%Rax; Ind3 (Lit (Int64.of_int (-8 * (List.length lst + 2))), Rbp)]) *)
-    ]
-    @
-    [
-      (*
       (Pushq, [~%Rax]);
-      (Pushq, [~%Rcx]);
-      *)
-      
       (Pushq, [~%Rdx]);
+      (Pushq, [~%Rcx]);
       (Pushq, [~%Rsi]);
       (Pushq, [~%Rdi]);
-      (Pushq, [~%Rsp]);
       (Pushq, [~%R08]);
       (Pushq, [~%R09]);
       (Pushq, [~%R10]);
       (Pushq, [~%R11]);
-      
-
-      (* (Callq, [Imm (Lbl (Platform.mangle (get_label op)))]); *)
+    ] @
+    [
       (Pushq, [~%Rbp]);
       (Movq, [~%Rsp; ~%Rbp]);
     ] @ set_params 1 (List.length lst) @
     [
       (Callq, [Imm (Lbl (Platform.mangle (get_label op)))]);
       (Popq, [~%Rbp]);
-      (* (Movq, [~%Rax; Ind3 (Lit (Int64.of_int (-8 * (List.length lst + 3))), Rbp)]); *)
       
       (Popq, [~%R11]);
       (Popq, [~%R10]);
       (Popq, [~%R09]);
       (Popq, [~%R08]);
-      (Popq, [~%Rsp]);
       (Popq, [~%Rdi]);
       (Popq, [~%Rsi]);
-      (Popq, [~%Rdx]);
-      (*
       (Popq, [~%Rcx]);
-      (Popq, [~%Rax]);
-      *)
+      (Popq, [~%Rdx]);
 
       (Movq, [~%Rax; lookup ctxt.layout uid]);
-      (* (Popq, [~%Rax]) *)
+      (Popq, [~%Rax]);
     ]
-    (* 
-    [(Movq, [~$(List.length lst); ~%R12]);
-      
-    ] *)
   | Gep (typ, op, oplst) -> failwith "Gep unimplemented"
 
 let check_call ((uid:uid), (i:Ll.insn)) : string list =
@@ -424,10 +406,13 @@ let compile_terminator (ctxt:ctxt) (t: (Ll.uid * Ll.terminator)) : X86.ins list 
 
 (* We have left this helper function here for you to complete. *)
 let compile_block (ctxt:ctxt) (blk:Ll.block) : X86.ins list =
+  let open X86.Asm in
   let rec for_instr : (Ll.uid * Ll.insn) list -> X86.ins list = function
     | h::tl -> compile_insn ctxt h @ for_instr tl
     | []    -> []
-  in (for_instr blk.insns) @ compile_terminator ctxt blk.term
+  (* Initializes default value for Rax *)
+  in (Movq, [~$0; ~%Rax]) :: (Movq, [~%Rsp; ~%Rbp])
+  :: (for_instr blk.insns) @ compile_terminator ctxt blk.term
 
 let compile_lbl_block lbl ctxt blk : elem =
   Asm.text lbl (compile_block ctxt blk)
@@ -451,9 +436,9 @@ let stack_layout (args:'a list) ((block:Ll.block), (lbled_blocks:(lbl*block) lis
   let rec add_to_stack (insns:(uid*insn) list) (lbled_blocks:(lbl*block) list) (i:int) : layout =
     match insns with
     | (id, (Alloca typ))::tl -> let n = (size_ty [] typ) / 8 in
-      (id, Ind3 (Lit (Int64.of_int (-8 * i)), Rsp))::
-      (id ^ "alloca_", Ind3 (Lit (Int64.of_int (-8 * (i + 1))), Rsp))::add_to_stack tl lbled_blocks (i+1+n)
-    | (id, instr)::tl -> (id, Ind3 (Lit (Int64.of_int (-8 * i)), Rsp))::add_to_stack tl lbled_blocks (i+1)
+      (id, Ind3 (Lit (Int64.of_int (-8 * i)), Rbp))::
+      (id ^ "alloca_", Ind3 (Lit (Int64.of_int (-8 * (i + 1))), Rbp))::add_to_stack tl lbled_blocks (i+1+n)
+    | (id, instr)::tl -> (id, Ind3 (Lit (Int64.of_int (-8 * i)), Rbp))::add_to_stack tl lbled_blocks (i+1)
     | _ -> match lbled_blocks with
       | (_,blk)::blk_tl -> add_to_stack blk.insns blk_tl i
       | _ -> []

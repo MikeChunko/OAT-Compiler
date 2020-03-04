@@ -296,9 +296,8 @@ let compile_insn ctxt ((uid:uid), (i:Ll.insn)) : X86.ins list =
     (* Ind3 (Lit (Int64.of_int (8 * (n-6))), Rsp) *)
   | Call (typ, op, lst) ->
     let rec set_params (n:int) (last:int) =
-      match n with
-      | last -> []
-      | _ -> (Movq, [Ind3 (Lit (Int64.of_int (-8 * (n+2))), Rbp); arg_loc (n-1)]) :: set_params (n+1) last
+      if (n = last) then []
+      else (Movq, [Ind3 (Lit (Int64.of_int (-8 * (n+2))), Rbp); arg_loc (n-1)]) :: set_params (n+1) last
     in
     let get_label = function
     | Gid lbl -> lbl
@@ -314,7 +313,9 @@ let compile_insn ctxt ((uid:uid), (i:Ll.insn)) : X86.ins list =
       List.map (fun r -> (Popq, [~%r])) (List.rev reg_lst)
     in
     [
+      (Subq, [~$64; ~%Rsp]);
       (Pushq, [~%Rax]);
+
       (Pushq, [~%Rdx]);
       (Pushq, [~%Rcx]);
       (Pushq, [~%Rsi]);
@@ -324,12 +325,12 @@ let compile_insn ctxt ((uid:uid), (i:Ll.insn)) : X86.ins list =
       (Pushq, [~%R10]);
       (Pushq, [~%R11]);
 
-      (Movq, [~$(List.length lst); ~%R09]);
+      (* (Movq, [~$(List.length lst); ~%R09]); *)
     ] @
     [
       (Pushq, [~%Rbp]);
       (Movq, [~%Rsp; ~%Rbp]);
-    ] @ set_params 1 (List.length lst) @
+    ] @ (set_params 1 (List.length lst + 1)) @
     [
       (Callq, [Imm (Lbl (Platform.mangle (get_label op)))]);
       (Popq, [~%Rbp]);
@@ -345,6 +346,7 @@ let compile_insn ctxt ((uid:uid), (i:Ll.insn)) : X86.ins list =
 
       (Movq, [~%Rax; lookup ctxt.layout uid]);
       (Popq, [~%Rax]);
+      (Addq, [~$64; ~%Rsp]);
     ]
   | Gep (typ, op, oplst) -> failwith "Gep unimplemented"
 
@@ -487,6 +489,9 @@ let compile_fdecl (tdecls:(Ll.tid * Ll.ty) list) (name:string) {f_ty; f_param; f
   let open Asm in
   (* Used for determining which blocks are function callees *)
   let rec compile_fdecl' (tdecls:(Ll.tid * Ll.ty) list) (name:string) {f_ty; f_param; f_cfg} (layout:layout): X86.prog =
+    let addr_offset =
+      (List.length block_layout) * 8
+    in
     match f_cfg with (blk, blk_lst) ->
     let x = [
       if (name = "main") then

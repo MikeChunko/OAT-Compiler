@@ -54,6 +54,13 @@ type operand =
   | Gid of gid
   | Id of uid
 
+let op_to_str = function
+  | Null -> "Null"
+  | Const int64 -> "Const"
+  | Gid gid -> "Gid"
+  | Id uid -> "Id"
+
+
 (* Binary i64 Operations *)
 type bop =
   | Add
@@ -122,6 +129,16 @@ type terminator =
   | Ret of ty * operand option
   | Br of lbl
   | Cbr of operand * lbl * lbl
+
+let get_ty_from_term (t:terminator) =
+  match t with
+  | Ret (ty, op) ->
+    begin match op with
+    | Some o -> "yay: " ^ (op_to_str o)
+    | None -> "Nop"
+    end
+  | _ -> "oopsie"
+
 
 (* Basic Blocks *)
 type block = { insns : (uid * insn) list; term : (uid * terminator) }

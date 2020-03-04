@@ -178,7 +178,7 @@ let arg_loc (n:int) : operand =
   | 4 -> Reg R08
   | 5 -> Reg R09
   (* Puts the rest on the stack *)
-  | _ -> Ind3 (Lit (Int64.of_int (8 * (n-6))), Rbp)
+  | _ -> Ind3 (Lit (Int64.of_int (8 * (n-4))), Rbp)
 
 let compile_bop : Ll.bop -> X86.opcode = function
   | Add  -> Addq
@@ -194,31 +194,6 @@ let compile_bop : Ll.bop -> X86.opcode = function
 let get_uid : Ll.operand -> uid = function
   | Id uid -> uid
   | _      -> failwith "expected uid"
-
-(*
-      (Pushq, [~%Rax]);
-      (Pushq, [~%Rcx]);
-      (Pushq, [~%Rdx]);
-      (Pushq, [~%Rsi]);
-      (Pushq, [~%Rdi]);
-      (Pushq, [~%Rsp]);
-      (Pushq, [~%R08]);
-      (Pushq, [~%R09]);
-      (Pushq, [~%R10]);
-      (Pushq, [~%R11]);
-
-      (Popq, [~%R11]);
-      (Popq, [~%R10]);
-      (Popq, [~%R09]);
-      (Popq, [~%R08]);
-      (Popq, [~%Rsp]);
-      (Popq, [~%Rdi]);
-      (Popq, [~%Rsi]);
-      (Popq, [~%Rcx]);
-      (Popq, [~%Rdx]);
-      (Popq, [~%Rcx]);
-      (Popq, [~%Rax])
-*)
 
 (* The result of compiling a single LLVM instruction might be many x86
   instructions.  We have not determined the structure of this code
@@ -303,6 +278,7 @@ let compile_insn ctxt ((uid:uid), (i:Ll.insn)) : X86.ins list =
     | Gid lbl -> lbl
     | _ -> failwith "unsupported label"
     in
+    (*
     let reg_lst = [
       Rax; Rdx; Rcx; Rsi; Rdi; R08; R09; R10; R11
     ] in
@@ -312,6 +288,7 @@ let compile_insn ctxt ((uid:uid), (i:Ll.insn)) : X86.ins list =
     let pop_lst =
       List.map (fun r -> (Popq, [~%r])) (List.rev reg_lst)
     in
+    *)
     [
       (Subq, [~$64; ~%Rsp]);
       (Pushq, [~%Rax]);
@@ -406,10 +383,14 @@ let compile_terminator (ctxt:ctxt) (t: (Ll.uid * Ll.terminator)) : X86.ins list 
       (Jmp,   [Imm (Lbl (Platform.mangle lbl2))])
     ]
 
+
 (* Compiling blocks --------------------------------------------------------- *)
 
 (* We have left this helper function here for you to complete. *)
 let compile_block (ctxt:ctxt) (blk:Ll.block) : X86.ins list =
+  print_string "BLAWK\n";
+  print_string (Ll.get_ty_from_term (snd blk.term));
+  print_string "\n";
   let open X86.Asm in
   let rec for_instr : (Ll.uid * Ll.insn) list -> X86.ins list = function
     | h::tl -> compile_insn ctxt h @ for_instr tl
@@ -421,13 +402,17 @@ let compile_lbl_block lbl ctxt blk : elem =
   Asm.text lbl (compile_block ctxt blk)
 
 let compile_fun_block (ctxt:ctxt) (blk:Ll.block) : X86.ins list =
+  print_string ("\nMade it to fun_block");
   let split_ret (lst:X86.ins list) : (X86.ins list * X86.ins) =
+    print_string "\nHello split_ret\n";
     let lst' = List.rev lst in
     match lst' with
     | [] -> failwith "Empty block"
     | h::tl -> (List.rev tl, h)
   in
+  print_string "Before split\n";
   let (lst,ret) = split_ret (compile_block ctxt blk) in
+  print_string "After split\n";
   let open X86.Asm in
   [
     (*
@@ -457,7 +442,7 @@ let compile_fun_block (ctxt:ctxt) (blk:Ll.block) : X86.ins list =
   - in this (inefficient) compilation strategy, each local id
     is also stored as a stack slot.
   - see the discusion about locals *)
-let stack_layout (args:'a list) ((block:Ll.block), (lbled_blocks:(lbl*block) list)) : layout =
+let stack_layout (args:Ll.uid list) ((block:Ll.block), (lbled_blocks:(lbl*block) list)) : layout =
   let rec add_to_stack (insns:(uid*insn) list) (lbled_blocks:(lbl*block) list) (i:int) : layout =
     match insns with
     | (id, (Alloca typ))::tl -> let n = (size_ty [] typ) / 8 in
@@ -467,7 +452,13 @@ let stack_layout (args:'a list) ((block:Ll.block), (lbled_blocks:(lbl*block) lis
     | _ -> match lbled_blocks with
       | (_,blk)::blk_tl -> add_to_stack blk.insns blk_tl i
       | _ -> []
-  in add_to_stack block.insns lbled_blocks 1
+  in
+  let rec add_args (lst:Ll.uid list) (n:int) =
+    match lst with
+    | h::tl -> (h, arg_loc n) :: add_args tl (n+1)
+    | [] -> []
+  in
+  (add_to_stack block.insns lbled_blocks 1) @ (add_args args 0)
 
 (* The code for the entry-point of a function must do several things:
   - since our simple compiler maps local %uids to stack slots,
@@ -484,15 +475,14 @@ let stack_layout (args:'a list) ((block:Ll.block), (lbled_blocks:(lbl*block) lis
   - the function entry code should allocate the stack storage needed
     to hold all of the local stack slots. *)
 let compile_fdecl (tdecls:(Ll.tid * Ll.ty) list) (name:string) {f_ty; f_param; f_cfg} : X86.prog =
-
-  let block_layout = stack_layout [] f_cfg in
+  let block_layout = stack_layout f_param f_cfg in
+  print_string ("Layout size: " ^ (string_of_int (List.length block_layout)));
   let open Asm in
-  (* Used for determining which blocks are function callees *)
+  print_string ("BEGIN: " ^ name ^ "\n");
   let rec compile_fdecl' (tdecls:(Ll.tid * Ll.ty) list) (name:string) {f_ty; f_param; f_cfg} (layout:layout): X86.prog =
-    let addr_offset =
-      (List.length block_layout) * 8
-    in
     match f_cfg with (blk, blk_lst) ->
+    print_string "blk_lst: ";
+    print_string (string_of_int (List.length blk_lst));
     let x = [
       if (name = "main") then
       {lbl = name; global = true; asm =
@@ -503,9 +493,10 @@ let compile_fdecl (tdecls:(Ll.tid * Ll.ty) list) (name:string) {f_ty; f_param; f
         Text (compile_fun_block { tdecls = tdecls; layout = block_layout} blk)
       }
     ] in
+    print_string "END";
     let y = (match blk_lst with
-      | [] -> []
-      | (lbl,blk)::tl -> compile_fdecl' tdecls lbl {f_ty; f_param; f_cfg=(blk, tl)} layout)
+      | [] -> print_string "what"; []
+      | (lbl,blk)::tl -> print_string "neat" ;compile_fdecl' tdecls lbl {f_ty; f_param; f_cfg=(blk, tl)} layout)
     in x @ y in
   print_layout block_layout; compile_fdecl' tdecls name {f_ty; f_param; f_cfg} block_layout
 

@@ -26,13 +26,15 @@ type ty =
 
 let rec string_of_ty (t:ty) : string =
   match t with
-  | Void      -> "Void, "
-  | I1        -> "I1, "
-  | I8        -> "I8, "
-  | I64       -> "I64, "
-  | Ptr t1    -> "Ptr of " ^ string_of_ty t1
-  | Struct tl -> "Struct of [" ^ print_tylist tl ^ "]"
-  | _         -> "Unimplemented print, "
+  | Void        -> "Void, "
+  | I1          -> "I1, "
+  | I8          -> "I8, "
+  | I64         -> "I64, "
+  | Ptr t1      -> "Ptr of " ^ string_of_ty t1
+  | Struct tl   -> "Struct of [" ^ print_tylist tl ^ "]"
+  | Fun (tl,t)  -> "Fun " ^ string_of_ty t ^ " of [" ^ print_tylist tl ^ "]"
+  | Namedt tid  -> "Named " ^ tid
+  | Array (i,t) -> "Array of " ^ string_of_int i ^ " x " ^ string_of_ty t
 and
 print_tylist (lst: ty list) =
   match lst with
@@ -59,7 +61,6 @@ let op_to_str = function
   | Const int64 -> "Const"
   | Gid gid -> "Gid"
   | Id uid -> "Id"
-
 
 (* Binary i64 Operations *)
 type bop =

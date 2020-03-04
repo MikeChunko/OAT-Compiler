@@ -88,6 +88,11 @@ let compile_operand ctxt dest : Ll.operand -> ins = function
   | Gid gid -> (Movq, [Ind3 (Lbl gid, Rip); dest])
   | Id uid  -> (Movq, [lookup ctxt.layout uid; dest])
 
+let compile_operand_int ctxt : Ll.operand -> int = function
+  | Null    -> 0
+  | Const i -> Int64.to_int i
+  | _       -> failwith "Compile_operand_int: Not yet implemented for uid/gid"
+
 (* Compiling call  ---------------------------------------------------------- *)
 
 (* You will probably find it helpful to implement a helper function that
@@ -107,8 +112,6 @@ let compile_operand ctxt dest : Ll.operand -> ins = function
   [ NOTE: Don't forget to preserve caller-save registers (only if
   needed). ]
 *)
-
-
 
 
 (* Compiling getelementptr (gep)  ------------------------------------------- *)
@@ -158,8 +161,46 @@ let rec size_ty tdecls t : int =
   5. if the index is valid, the remainder of the path is computed as
     in (4), but relative to the type f the sub-element picked out
     by the path so far *)
-let compile_gep ctxt (op : Ll.ty * Ll.operand) (path: Ll.operand list) : ins list =
-  failwith "compile_gep not implemented"
+
+(* Recursively evaluates the offset from ~%base based off of path and typ *)
+let rec gep_helper ctxt (base:X86.reg) (typ:Ll.ty) (path:Ll.operand list) : ins list =
+  let open X86.Asm in
+  let rec get_type (typ:Ll.ty) (n:int) (acc:int) : (Ll.ty * int) =
+    match typ with
+    | Struct lst ->
+      if lst = [] then (Void, acc)
+      else if n = 0 then (List.hd lst, acc)
+      else get_type (Struct (List.tl lst)) (n-1) (acc + (size_ty ctxt.tdecls (List.hd lst)))
+    | Array (i,t) -> if n >= i then (Void, acc + n * (size_ty ctxt.tdecls t)) else (t, acc + n * (size_ty ctxt.tdecls t))
+    | _ -> failwith "Gep: Can only index into a struct/array" in
+  match path with
+  | h::tl ->
+    let (typ', sum) = get_type typ (compile_operand_int ctxt h) 0 in
+    print_string ("TYPE: " ^ (string_of_ty typ') ^ "\n"); [
+      (*(compile_operand ctxt (Reg R11) (h));
+      (Imulq, [~$(size_ty ctxt.tdecls typ'); ~%R11]);
+      (Addq,  [~%R11; ~%base])*)
+      (Addq,  [~$sum; ~%base])
+    ] @ gep_helper ctxt base typ' tl (* TODO: Calculate typ' (subtype of typ) from h *)
+  | [] -> []
+
+let compile_gep ctxt (op:Ll.ty * Ll.operand) (path:Ll.operand list) : ins list =
+  let open X86.Asm in
+  match fst op, snd op with
+  | Ptr (Namedt t), Gid gid -> (*| Gid gid -> (Movq, [Ind3 (Lbl gid, Rip); dest])*)
+    [
+      (Movq, [Imm (Lbl gid); ~%R10]);
+      (Addq, [~%Rip; ~%R10]) (* Puts the absolute address of op (base) into R10 in a way that works nicely with load *)
+    ] @ gep_helper ctxt R10 (lookup ctxt.tdecls t) (List.tl path)
+  | Ptr (Namedt t), Id uid -> failwith "Gep: not yet implemented for uid"
+  | Ptr t, Gid gid -> (*| Gid gid -> (Movq, [Ind3 (Lbl gid, Rip); dest])*)
+    [
+      (Movq, [Imm (Lbl gid); ~%R10]);
+      (Addq, [~%Rip; ~%R10]) (* Puts the absolute address of op (base) into R10 in a way that works nicely with load *)
+    ] @ gep_helper ctxt R10 t (List.tl path)
+  | Ptr t, Id uid -> failwith "Gep: not yet implemented for uid"
+  | Ptr t, _ -> failwith "Gep: op must be a gid or uid"
+  | _ -> failwith "Gep: op must be a pointer"
 
 (* Compiling instructions  -------------------------------------------------- *)
 
@@ -330,7 +371,9 @@ let compile_insn ctxt ((uid:uid), (i:Ll.insn)) : X86.ins list =
       (Popq, [~%Rax]);
       (Addq, [~$64; ~%Rsp]);
     ]
-  | Gep (typ, op, oplst) -> failwith "Gep unimplemented"
+  | Gep (typ, op, oplst) ->
+    compile_gep ctxt (typ, op) oplst @
+    [(Movq, [~%R10; lookup ctxt.layout uid])]
 
 let check_call ((uid:uid), (i:Ll.insn)) : string list =
   let open X86.Asm in

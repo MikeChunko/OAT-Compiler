@@ -270,9 +270,14 @@ let compile_insn ctxt ((uid:uid), (i:Ll.insn)) : X86.ins list =
     ]
     (* Ind3 (Lit (Int64.of_int (8 * (n-6))), Rsp) *)
   | Call (typ, op, lst) ->
-    let rec set_params (n:int) (last:int) =
+    let rec set_params (lst:(Ll.ty * Ll.operand) list) (n:int) =
+      match lst with
+      | [] -> []
+      | (t,op)::tl -> (compile_operand ctxt (arg_loc n) op) :: (set_params tl (n+1))
+      (*
       if (n = last) then []
       else (Movq, [Ind3 (Lit (Int64.of_int (-8 * (n+2))), Rbp); arg_loc (n-1)]) :: set_params (n+1) last
+      *)
     in
     let get_label = function
     | Gid lbl -> lbl
@@ -307,7 +312,7 @@ let compile_insn ctxt ((uid:uid), (i:Ll.insn)) : X86.ins list =
     [
       (Pushq, [~%Rbp]);
       (Movq, [~%Rsp; ~%Rbp]);
-    ] @ (set_params 1 (List.length lst + 1)) @
+    ] @ (set_params lst 0) @
     [
       (Callq, [Imm (Lbl (Platform.mangle (get_label op)))]);
       (Popq, [~%Rbp]);

@@ -195,7 +195,7 @@ let get_uid : Ll.operand -> uid = function
   | Id uid -> uid
   | _      -> failwith "expected uid"
 
-(* 
+(*
       (Pushq, [~%Rax]);
       (Pushq, [~%Rcx]);
       (Pushq, [~%Rdx]);
@@ -294,8 +294,8 @@ let compile_insn ctxt ((uid:uid), (i:Ll.insn)) : X86.ins list =
       (Movq, [~%R10; lookup ctxt.layout uid])
     ]
     (* Ind3 (Lit (Int64.of_int (8 * (n-6))), Rsp) *)
-  | Call (typ, op, lst) -> 
-    let rec set_params (n:int) (last:int) = 
+  | Call (typ, op, lst) ->
+    let rec set_params (n:int) (last:int) =
       match n with
       | last -> []
       | _ -> (Movq, [Ind3 (Lit (Int64.of_int (-8 * (n+2))), Rbp); arg_loc (n-1)]) :: set_params (n+1) last
@@ -323,7 +323,7 @@ let compile_insn ctxt ((uid:uid), (i:Ll.insn)) : X86.ins list =
       (Pushq, [~%R09]);
       (Pushq, [~%R10]);
       (Pushq, [~%R11]);
-      
+
       (Movq, [~$(List.length lst); ~%R09]);
     ] @
     [
@@ -333,7 +333,7 @@ let compile_insn ctxt ((uid:uid), (i:Ll.insn)) : X86.ins list =
     [
       (Callq, [Imm (Lbl (Platform.mangle (get_label op)))]);
       (Popq, [~%Rbp]);
-      
+
       (Popq, [~%R11]);
       (Popq, [~%R10]);
       (Popq, [~%R09]);
@@ -351,7 +351,7 @@ let compile_insn ctxt ((uid:uid), (i:Ll.insn)) : X86.ins list =
 let check_call ((uid:uid), (i:Ll.insn)) : string list =
   let open X86.Asm in
   match i with
-  | Call (typ, op, lst) -> 
+  | Call (typ, op, lst) ->
     let get_label = function
     | Gid lbl -> lbl
     | Id lbl -> lbl
@@ -423,7 +423,7 @@ let compile_fun_block (ctxt:ctxt) (blk:Ll.block) : X86.ins list =
     let lst' = List.rev lst in
     match lst' with
     | [] -> failwith "Empty block"
-    | h::tl -> (tl, h)
+    | h::tl -> (List.rev tl, h)
   in
   let (lst,ret) = split_ret (compile_block ctxt blk) in
   let open X86.Asm in
@@ -436,7 +436,7 @@ let compile_fun_block (ctxt:ctxt) (blk:Ll.block) : X86.ins list =
     *)
   ]
   @ lst
-  @ 
+  @
   [
     (*
     (Popq, [~%R15]);
@@ -489,11 +489,11 @@ let compile_fdecl (tdecls:(Ll.tid * Ll.ty) list) (name:string) {f_ty; f_param; f
   let rec compile_fdecl' (tdecls:(Ll.tid * Ll.ty) list) (name:string) {f_ty; f_param; f_cfg} (layout:layout): X86.prog =
     match f_cfg with (blk, blk_lst) ->
     let x = [
-      if (name = "main") then 
+      if (name = "main") then
       {lbl = name; global = true; asm =
         Text ((Movq, [~$0; ~%Rax]) :: (Movq, [~%Rsp; ~%Rbp]) :: compile_block { tdecls = tdecls; layout = block_layout} blk)
       }
-      else 
+      else
       {lbl = name; global = true; asm =
         Text (compile_fun_block { tdecls = tdecls; layout = block_layout} blk)
       }

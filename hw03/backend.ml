@@ -336,7 +336,6 @@ let compile_insn ctxt ((uid:uid), (i:Ll.insn)) : X86.ins list =
     in
     *)
     [
-      (Subq, [~$64; ~%Rsp]);
       (Pushq, [~%Rax]);
 
       (Pushq, [~%Rdx]);
@@ -353,9 +352,11 @@ let compile_insn ctxt ((uid:uid), (i:Ll.insn)) : X86.ins list =
     [
       (Pushq, [~%Rbp]);
       (Movq, [~%Rsp; ~%Rbp]);
+      (Subq, [~$128; ~%Rsp]);
     ] @ (set_params lst 0) @
     [
       (Callq, [Imm (Lbl (Platform.mangle (get_label op)))]);
+      (Addq, [~$128; ~%Rsp]);
       (Popq, [~%Rbp]);
 
       (Popq, [~%R11]);
@@ -369,7 +370,6 @@ let compile_insn ctxt ((uid:uid), (i:Ll.insn)) : X86.ins list =
 
       (Movq, [~%Rax; lookup ctxt.layout uid]);
       (Popq, [~%Rax]);
-      (Addq, [~$64; ~%Rsp]);
     ]
   | Gep (typ, op, oplst) ->
     compile_gep ctxt (typ, op) oplst @

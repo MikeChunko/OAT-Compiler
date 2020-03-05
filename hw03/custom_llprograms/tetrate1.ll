@@ -12,7 +12,7 @@ end:
 
 define i64 @tetrate(i64 %b, i64 %n) {
 	%1 = icmp eq i64 %n, 0
-	br i1 %1, label %end, label %recurse
+	br i1 %1, label %end1, label %recurse1
 recurse1:
 	%2 = sub i64 %n, 1
 	%3 = call i64 @tetrate(i64 %b, i64 %2)

@@ -220,7 +220,7 @@ let arg_loc_insert (n:int) : operand =
   | _ -> (* Ind3 (Lit (Int64.of_int (8 * (n-5))), Rbp) *)
      Ind3 (Lit (Int64.of_int (8 * (n-6))), Rsp)
 
-let arg_loc_retrieve (n:int) : operand =
+let arg_loc (n:int) : operand =
   match n with
   | 0 -> Reg Rdi
   | 1 -> Reg Rsi
@@ -236,7 +236,7 @@ let arg_loc_retrieve (n:int) : operand =
   *)
   (* Puts the rest on the stack *)
   | _ -> (* Ind3 (Lit (Int64.of_int (8 * (n-5))), Rbp) *)
-     Ind3 (Lit (Int64.of_int (8 * (n-5))), Rbp)
+     Ind3 (Lit (Int64.of_int (8 * (n-4))), Rbp)
 
 let compile_bop : Ll.bop -> X86.opcode = function
   | Add  -> Addq
@@ -349,8 +349,7 @@ let compile_insn ctxt ((uid:uid), (i:Ll.insn)) : X86.ins list =
     [
       (* Allocates space for rbp-relatives within this block *)
       (Subq, [~$256; ~%Rsp]);
-
-      (Pushq, [~%Rbp]);
+      
       (Pushq, [~%Rdx]);
       (Pushq, [~%Rcx]);
       (Pushq, [~%Rsi]);
@@ -369,9 +368,7 @@ let compile_insn ctxt ((uid:uid), (i:Ll.insn)) : X86.ins list =
       
     ] @ (set_params lst 0) @
     [
-      (Movq, [~%Rsp; ~%Rbp]);
-
-      (Subq, [~$8; ~%Rbp]);
+      
       (Callq, [Imm (Lbl (Platform.mangle (get_label op)))]);
       (Addq, [~$arg_offset; ~%Rsp]);
       
@@ -383,7 +380,6 @@ let compile_insn ctxt ((uid:uid), (i:Ll.insn)) : X86.ins list =
       (Popq, [~%Rsi]);
       (Popq, [~%Rcx]);
       (Popq, [~%Rdx]);
-      (Popq, [~%Rbp]);
 
       (Movq, [~%Rax; lookup ctxt.layout uid]);
       (* (Movq, [~$69; lookup ctxt.layout uid]); *)
@@ -478,7 +474,10 @@ let compile_fun_block (ctxt:ctxt) (blk:Ll.block) (from_function:bool) (start:boo
   in
   (if start then
   [
+    (Pushq, [~%Rbp]);
+    (Movq, [~%Rsp; ~%Rbp]);
 
+    (Pushq, [~%Rbx]);
     (Pushq, [~%R12]);
     (Pushq, [~%R13]);
     (Pushq, [~%R14]);
@@ -494,6 +493,9 @@ let compile_fun_block (ctxt:ctxt) (blk:Ll.block) (from_function:bool) (start:boo
     (Popq, [~%R14]);
     (Popq, [~%R13]);
     (Popq, [~%R12]);
+    (Popq, [~%Rbx]);
+
+    (Popq, [~%Rbp]);
     
   ]
   else [])
@@ -520,7 +522,7 @@ let stack_layout (args:Ll.uid list) ((block:Ll.block), (lbled_blocks:(lbl*block)
   in
   let rec add_args (lst:Ll.uid list) (n:int) =
     match lst with
-    | h::tl -> (h, arg_loc_retrieve n) :: add_args tl (n+1)
+    | h::tl -> (h, arg_loc n) :: add_args tl (n+1)
     | [] -> []
   in
   (add_to_stack block.insns lbled_blocks 1) @ (add_args args 0)

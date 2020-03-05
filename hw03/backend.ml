@@ -202,7 +202,7 @@ let compile_gep ctxt (op:Ll.ty * Ll.operand) (path:Ll.operand list) : ins list =
   compile_fdecl.
 
   [ NOTE: the first six arguments are numbered 0 .. 5 ] *)
-let arg_loc (n:int) : operand =
+let arg_loc_insert (n:int) : operand =
   match n with
   | 0 -> Reg Rdi
   | 1 -> Reg Rsi
@@ -218,7 +218,25 @@ let arg_loc (n:int) : operand =
   *)
   (* Puts the rest on the stack *)
   | _ -> (* Ind3 (Lit (Int64.of_int (8 * (n-5))), Rbp) *)
-    failwith "Not supported yet"
+     Ind3 (Lit (Int64.of_int (8 * (n-6))), Rsp)
+
+let arg_loc_retrieve (n:int) : operand =
+  match n with
+  | 0 -> Reg Rdi
+  | 1 -> Reg Rsi
+  | 2 -> Reg Rdx
+  | 3 -> Reg Rcx
+  | 4 -> Reg R08
+  | 5 -> Reg R09
+  (* 
+  | 6 -> Reg R12
+  | 7 -> Reg R13
+  | 8 -> Reg R14
+  | 9 -> Reg R15
+  *)
+  (* Puts the rest on the stack *)
+  | _ -> (* Ind3 (Lit (Int64.of_int (8 * (n-5))), Rbp) *)
+     Ind3 (Lit (Int64.of_int (8 * (n-5))), Rbp)
 
 let compile_bop : Ll.bop -> X86.opcode = function
   | Add  -> Addq
@@ -321,7 +339,7 @@ let compile_insn ctxt ((uid:uid), (i:Ll.insn)) : X86.ins list =
       | [] -> []
       | (t,op)::tl -> (* print_string @@ "\nHELLO_WORLD: " ^ (string_of_int n) ^ ": (" ^ string_of_operand (arg_loc n)  ^ ", " ^ (op_to_str op) ^ ")\n";*)
                       (* (compile_operand ctxt (arg_loc n) op) :: (set_params tl (n+1)) *)
-                      [(compile_operand ctxt (Reg R15) op); (Movq, [Reg R15; (arg_loc n)]); ] @ (set_params tl (n+1))
+                      [(compile_operand ctxt (Reg R15) op); (Movq, [Reg R15; (arg_loc_insert n)]); ] @ (set_params tl (n+1))
     in
     let get_label = function
     | Gid lbl -> lbl
@@ -498,7 +516,7 @@ let stack_layout (args:Ll.uid list) ((block:Ll.block), (lbled_blocks:(lbl*block)
   in
   let rec add_args (lst:Ll.uid list) (n:int) =
     match lst with
-    | h::tl -> (h, arg_loc n) :: add_args tl (n+1)
+    | h::tl -> (h, arg_loc_retrieve n) :: add_args tl (n+1)
     | [] -> []
   in
   (add_to_stack block.insns lbled_blocks 1) @ (add_args args 0)

@@ -88,18 +88,6 @@ let compile_operand ctxt dest : Ll.operand -> ins = function
   | Gid gid -> (Movq, [Ind3 (Lbl gid, Rip); dest])
   | Id uid  -> (Movq, [lookup ctxt.layout uid; dest])
 
-let compile_operand_int ctxt : Ll.operand -> int = function
-  | Null    -> 0
-  | Const i -> Int64.to_int i
-  | Id u    ->
-    (match lookup ctxt.layout u with
-    | Imm (Lit i) -> Int64.to_int i
-    | _ -> failwith ("Compile_operand_int: " ^ u ^ " could not be resolved to int")
-    )
-  (* gid -> use lbl gid + rid to get address
-    not sure where to go from here *)
-  | _       -> failwith "Compile_operand_int: Not yet implemented for uid/gid"
-
 (* Compiling call  ---------------------------------------------------------- *)
 
 (* You will probably find it helpful to implement a helper function that
@@ -147,15 +135,38 @@ let rec size_ty tdecls t : int =
   | Array (n, ty)     -> n * size_ty tdecls ty
   | Namedt (tid)      -> size_ty tdecls (List.assoc tid tdecls)
 
+let compile_operand_int ctxt : Ll.operand -> int = function
+  | Null    -> 0
+  | Const i -> Int64.to_int i
+  | _       -> failwith "Gep: Can only index a struct with a const"
+
+(* Recursively evaluates the offset from ~%base based off of path and typ *)
+let rec gep_helper ctxt (base:X86.reg) (typ:Ll.ty) (path:Ll.operand list) : ins list =
+  let open X86.Asm in
+  let rec get_type (lst:Ll.ty list) (n:int) (acc:int) : (Ll.ty * int) =
+    if lst = [] then (Void, acc)
+    else if n = 0 then (List.hd lst, acc)
+    else get_type (List.tl lst) (n-1) (acc + (size_ty ctxt.tdecls (List.hd lst))) in
+  match path with
+  | h::tl ->
+    (match typ with
+    | Struct lst ->
+      (let (typ', sum) = get_type lst (compile_operand_int ctxt h) 0 in
+      [(Addq,  [~$sum; ~%base])] @ gep_helper ctxt base typ' tl)
+    | Array (i,t) ->
+      ([
+        (compile_operand ctxt (Reg R11) (h));
+        (Imulq, [~$(size_ty ctxt.tdecls t); ~%R11]);
+        (Addq,  [~%R11; ~%base])
+      ]) @ gep_helper ctxt base t tl
+    | _ -> failwith "Gep: Can only index into a struct/array")
+  | [] -> []
+
 (* Generates code that computes a pointer value.
-
   1. op must be of pointer type: t*
-
   2. the value of op is the base address of the calculation
-
   3. the first index in the path is treated as the index into an array
     of elements of type t located at the base address
-
   4. subsequent indices are interpreted according to the type t:
     - if t is a struct, the index must be a constant n and it
       picks out the n'th element of the struct. [ NOTE: the offset
@@ -164,51 +175,24 @@ let rec size_ty tdecls t : int =
     - if t is an array, the index can be any operand, and its
       value determines the offset within the array.
     - if t is any other type, the path is invalid
-
   5. if the index is valid, the remainder of the path is computed as
     in (4), but relative to the type f the sub-element picked out
     by the path so far *)
-
-(* Recursively evaluates the offset from ~%base based off of path and typ *)
-let rec gep_helper ctxt (base:X86.reg) (typ:Ll.ty) (path:Ll.operand list) : ins list =
-  let open X86.Asm in
-  let rec get_type (typ:Ll.ty) (n:int) (acc:int) : (Ll.ty * int) =
-    match typ with
-    | Struct lst ->
-      if lst = [] then (Void, acc)
-      else if n = 0 then (List.hd lst, acc)
-      else get_type (Struct (List.tl lst)) (n-1) (acc + (size_ty ctxt.tdecls (List.hd lst)))
-    | Array (i,t) -> if n >= i then (Void, acc + n * (size_ty ctxt.tdecls t)) else (t, acc + n * (size_ty ctxt.tdecls t))
-    | _ -> failwith "Gep: Can only index into a struct/array" in
-  match path with
-  | h::tl ->
-    let (typ', sum) = get_type typ (compile_operand_int ctxt h) 0 in
-    print_string ("TYPE: " ^ (string_of_ty typ') ^ "\n"); [
-      (*(compile_operand ctxt (Reg R11) (h));
-      (Imulq, [~$(size_ty ctxt.tdecls typ'); ~%R11]);
-      (Addq,  [~%R11; ~%base])*)
-      (Addq,  [~$sum; ~%base])
-    ] @ gep_helper ctxt base typ' tl (* TODO: Calculate typ' (subtype of typ) from h *)
-  | [] -> []
-
 let compile_gep ctxt (op:Ll.ty * Ll.operand) (path:Ll.operand list) : ins list =
   let open X86.Asm in
-  match fst op, snd op with
-  | Ptr (Namedt t), Gid gid -> (*| Gid gid -> (Movq, [Ind3 (Lbl gid, Rip); dest])*)
+  let x = match snd op with
+  | Gid gid ->
     [
       (Movq, [Imm (Lbl gid); ~%R10]);
-      (Addq, [~%Rip; ~%R10]) (* Puts the absolute address of op (base) into R10 in a way that works nicely with load *)
-    ] @ gep_helper ctxt R10 (lookup ctxt.tdecls t) (List.tl path)
-  | Ptr (Namedt t), Id uid ->
-    [(compile_operand ctxt (Reg R10) (Id uid));] @ gep_helper ctxt R10 (lookup ctxt.tdecls t) (List.tl path)
-  | Ptr t, Gid gid -> (*| Gid gid -> (Movq, [Ind3 (Lbl gid, Rip); dest])*)
-    [
-      (Movq, [Imm (Lbl gid); ~%R10]);
-      (Addq, [~%Rip; ~%R10]) (* Puts the absolute address of op (base) into R10 in a way that works nicely with load *)
-    ] @ gep_helper ctxt R10 t (List.tl path) (* TODO: DO NOT IGNORE FIRST INDEX IF OP POITNS TO AN ARRAY *)
-  | Ptr t, Id uid -> failwith "Gep: not yet implemented for uid"
-  | Ptr t, _ -> failwith "Gep: op must be a gid or uid"
-  | _ -> failwith "Gep: op must be a pointer"
+      (Addq, [~%Rip; ~%R10])
+    ]
+  | Id uid -> [(compile_operand ctxt (Reg R10) (Id uid))]
+  | _      -> failwith "Gep: op must be a gid or uid" in
+  let y = match fst op with
+  | Ptr (Namedt t) -> gep_helper ctxt R10 (lookup ctxt.tdecls t) (List.tl path)
+  | Ptr t -> gep_helper ctxt R10 t (List.tl path)
+  | _ -> failwith "Gep: op must be a pointer" in
+  x @ y
 
 (* Compiling instructions  -------------------------------------------------- *)
 
@@ -308,13 +292,13 @@ let compile_insn ctxt ((uid:uid), (i:Ll.insn)) : X86.ins list =
       | Ind3 ((Lit i'), r) -> (Int64.sub i' 8L, Ind3 ((Lit (Int64.sub i' 8L)), r))
       | _ -> failwith "Alloca: Something went wrong") in
     [
-      (Movq, [~$0; x_op2]); (* Initialized pointed-to value with 0 *)
+      (Movq, [~$0; x_op2]); (* Initialize pointed-to value with 0 *)
       (Movq, [~$(Int64.to_int i); ~%R10]);
       (Addq, [~%Rbp; ~%R10]);
       (Movq, [~%R10; x_op1]) (* Returns an absolute address to the pointer *)
     ]
-  | Bitcast (typ1, op, typ2) -> 
-    (match op with  (*Gid gid -> (Movq, [Ind3 (Lbl gid, Rip); dest])*)
+  | Bitcast (typ1, op, typ2) ->
+    (match op with
     | Gid g -> [
         (Movq, [Imm (Lbl g); ~%R10]);
         (Addq, [~%Rip; ~%R10]);
@@ -324,7 +308,6 @@ let compile_insn ctxt ((uid:uid), (i:Ll.insn)) : X86.ins list =
       (compile_operand ctxt (Reg R10) op);
       (Movq, [~%R10; lookup ctxt.layout uid])
       ])
-    (* Ind3 (Lit (Int64.of_int (8 * (n-6))), Rsp) *)
   | Call (typ, op, lst) ->
     let rec set_params (lst:(Ll.ty * Ll.operand) list) (n:int) =
       match lst with
@@ -446,14 +429,10 @@ let compile_terminator (ctxt:ctxt) (t: (Ll.uid * Ll.terminator)) : X86.ins list 
       (Jmp,   [Imm (Lbl (Platform.mangle lbl2))])
     ]
 
-
 (* Compiling blocks --------------------------------------------------------- *)
 
 (* We have left this helper function here for you to complete. *)
 let compile_block (ctxt:ctxt) (blk:Ll.block) : X86.ins list =
-  print_string "BLAWK\n";
-  print_string (Ll.get_ty_from_term (snd blk.term));
-  print_string "\n";
   let open X86.Asm in
   let rec for_instr : (Ll.uid * Ll.insn) list -> X86.ins list = function
     | h::tl -> compile_insn ctxt h @ for_instr tl
@@ -465,17 +444,12 @@ let compile_lbl_block lbl ctxt blk : elem =
   Asm.text lbl (compile_block ctxt blk)
 
 let compile_fun_block (ctxt:ctxt) (blk:Ll.block) : X86.ins list =
-  print_string ("\nMade it to fun_block");
   let split_ret (lst:X86.ins list) : (X86.ins list * X86.ins) =
-    print_string "\nHello split_ret\n";
     let lst' = List.rev lst in
     match lst' with
     | [] -> failwith "Empty block"
-    | h::tl -> (List.rev tl, h)
-  in
-  print_string "Before split\n";
+    | h::tl -> (List.rev tl, h) in
   let (lst,ret) = split_ret (compile_block ctxt blk) in
-  print_string "After split\n";
   let open X86.Asm in
   [
     (*
@@ -539,13 +513,9 @@ let stack_layout (args:Ll.uid list) ((block:Ll.block), (lbled_blocks:(lbl*block)
     to hold all of the local stack slots. *)
 let compile_fdecl (tdecls:(Ll.tid * Ll.ty) list) (name:string) {f_ty; f_param; f_cfg} : X86.prog =
   let block_layout = stack_layout f_param f_cfg in
-  print_string ("Layout size: " ^ (string_of_int (List.length block_layout)));
   let open Asm in
-  print_string ("BEGIN: " ^ name ^ "\n");
   let rec compile_fdecl' (tdecls:(Ll.tid * Ll.ty) list) (name:string) {f_ty; f_param; f_cfg} (layout:layout): X86.prog =
     match f_cfg with (blk, blk_lst) ->
-    print_string "blk_lst: ";
-    print_string (string_of_int (List.length blk_lst));
     let x = [
       if (name = "main") then
       {lbl = name; global = true; asm =
@@ -556,10 +526,9 @@ let compile_fdecl (tdecls:(Ll.tid * Ll.ty) list) (name:string) {f_ty; f_param; f
         Text (compile_fun_block { tdecls = tdecls; layout = block_layout} blk)
       }
     ] in
-    print_string "END";
     let y = (match blk_lst with
-      | [] -> print_string "what"; []
-      | (lbl,blk)::tl -> print_string "neat" ;compile_fdecl' tdecls lbl {f_ty; f_param; f_cfg=(blk, tl)} layout)
+      | [] -> []
+      | (lbl,blk)::tl -> compile_fdecl' tdecls lbl {f_ty; f_param; f_cfg=(blk, tl)} layout)
     in x @ y in
   print_layout block_layout; compile_fdecl' tdecls name {f_ty; f_param; f_cfg} block_layout
 

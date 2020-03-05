@@ -210,15 +210,8 @@ let arg_loc_insert (n:int) : operand =
   | 3 -> Reg Rcx
   | 4 -> Reg R08
   | 5 -> Reg R09
-  (* 
-  | 6 -> Reg R12
-  | 7 -> Reg R13
-  | 8 -> Reg R14
-  | 9 -> Reg R15
-  *)
   (* Puts the rest on the stack *)
-  | _ -> (* Ind3 (Lit (Int64.of_int (8 * (n-5))), Rbp) *)
-     Ind3 (Lit (Int64.of_int (8 * (n-6))), Rsp)
+  | _ -> Ind3 (Lit (Int64.of_int (8 * (n-6))), Rsp)
 
 let arg_loc (n:int) : operand =
   match n with
@@ -228,15 +221,8 @@ let arg_loc (n:int) : operand =
   | 3 -> Reg Rcx
   | 4 -> Reg R08
   | 5 -> Reg R09
-  (* 
-  | 6 -> Reg R12
-  | 7 -> Reg R13
-  | 8 -> Reg R14
-  | 9 -> Reg R15
-  *)
-  (* Puts the rest on the stack *)
-  | _ -> (* Ind3 (Lit (Int64.of_int (8 * (n-5))), Rbp) *)
-     Ind3 (Lit (Int64.of_int (8 * (n-4))), Rbp)
+  (* Gets the rest from the stack *)
+  | _ -> Ind3 (Lit (Int64.of_int (8 * (n-4))), Rbp)
 
 let compile_bop : Ll.bop -> X86.opcode = function
   | Add  -> Addq
@@ -269,7 +255,7 @@ let get_uid : Ll.operand -> uid = function
     Platform.mangle the global identifier.
   - Alloca: needs to return a pointer into the stack
   - Bitcast: does nothing interesting at the assembly level *)
-let compile_insn ctxt ((uid:uid), (i:Ll.insn)) : X86.ins list =
+let compile_insn ctxt ((uid:uid), (i:Ll.insn)) (insn_count:int) : X86.ins list =
   let open X86.Asm in
   match i with
   | Binop (binop, _, op1, op2) ->
@@ -345,10 +331,11 @@ let compile_insn ctxt ((uid:uid), (i:Ll.insn)) : X86.ins list =
     | Gid lbl -> lbl
     | _ -> failwith "unsupported label"
     in
-    let arg_offset = if (List.length lst) < 7 then 0 else ((List.length lst) - 6) * 8 in
+    let local_offset = (256 + insn_count * 16)
+    in let arg_offset = if (List.length lst) < 7 then 0 else ((List.length lst) - 6) * 8 in
     [
       (* Allocates space for rbp-relatives within this block *)
-      (Subq, [~$256; ~%Rsp]);
+      (Subq, [~$local_offset; ~%Rsp]);
       
       (Pushq, [~%Rdx]);
       (Pushq, [~%Rcx]);
@@ -359,16 +346,10 @@ let compile_insn ctxt ((uid:uid), (i:Ll.insn)) : X86.ins list =
       (Pushq, [~%R10]);
       (Pushq, [~%R11]);
 
-      (* (Movq, [~$(List.length lst); ~%R09]); *)
-    ] @
-    [
-      
       (Subq, [~$arg_offset; ~%Rsp]);
-      
-      
-    ] @ (set_params lst 0) @
+    ]
+     @ (set_params lst 0) @
     [
-      
       (Callq, [Imm (Lbl (Platform.mangle (get_label op)))]);
       (Addq, [~$arg_offset; ~%Rsp]);
       
@@ -382,9 +363,7 @@ let compile_insn ctxt ((uid:uid), (i:Ll.insn)) : X86.ins list =
       (Popq, [~%Rdx]);
 
       (Movq, [~%Rax; lookup ctxt.layout uid]);
-      (* (Movq, [~$69; lookup ctxt.layout uid]); *)
-      (Addq, [~$256; ~%Rsp]);
-      
+      (Addq, [~$local_offset; ~%Rsp]);
     ]
   | Gep (typ, op, oplst) ->
     compile_gep ctxt (typ, op) oplst @
@@ -451,8 +430,9 @@ let compile_terminator (ctxt:ctxt) (t: (Ll.uid * Ll.terminator)) : X86.ins list 
 (* We have left this helper function here for you to complete. *)
 let compile_block (ctxt:ctxt) (blk:Ll.block) : X86.ins list =
   let open X86.Asm in
+  let insn_count = List.length blk.insns in
   let rec for_instr : (Ll.uid * Ll.insn) list -> X86.ins list = function
-    | h::tl -> compile_insn ctxt h @ for_instr tl
+    | h::tl -> compile_insn ctxt h insn_count @ for_instr tl
     | []    -> []
   (* Initializes default value for Rax *)
   in (for_instr blk.insns) @ compile_terminator ctxt blk.term
@@ -485,8 +465,7 @@ let compile_fun_block (ctxt:ctxt) (blk:Ll.block) (from_function:bool) (start:boo
     
   ]
   else [])
-  @ lst
-  @
+  @ lst @
   (if (is_return && from_function) then
   [
     (Popq, [~%R15]);

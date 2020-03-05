@@ -210,8 +210,15 @@ let arg_loc (n:int) : operand =
   | 3 -> Reg Rcx
   | 4 -> Reg R08
   | 5 -> Reg R09
+  (* 
+  | 6 -> Reg R12
+  | 7 -> Reg R13
+  | 8 -> Reg R14
+  | 9 -> Reg R15
+  *)
   (* Puts the rest on the stack *)
-  | _ -> Ind3 (Lit (Int64.of_int (8 * (n-4))), Rbp)
+  | _ -> (* Ind3 (Lit (Int64.of_int (8 * (n-5))), Rbp) *)
+    failwith "Not supported yet"
 
 let compile_bop : Ll.bop -> X86.opcode = function
   | Add  -> Addq
@@ -312,30 +319,20 @@ let compile_insn ctxt ((uid:uid), (i:Ll.insn)) : X86.ins list =
     let rec set_params (lst:(Ll.ty * Ll.operand) list) (n:int) =
       match lst with
       | [] -> []
-      | (t,op)::tl -> (compile_operand ctxt (arg_loc n) op) :: (set_params tl (n+1))
-      (*
-      if (n = last) then []
-      else (Movq, [Ind3 (Lit (Int64.of_int (-8 * (n+2))), Rbp); arg_loc (n-1)]) :: set_params (n+1) last
-      *)
+      | (t,op)::tl -> (* print_string @@ "\nHELLO_WORLD: " ^ (string_of_int n) ^ ": (" ^ string_of_operand (arg_loc n)  ^ ", " ^ (op_to_str op) ^ ")\n";*)
+                      (* (compile_operand ctxt (arg_loc n) op) :: (set_params tl (n+1)) *)
+                      [(compile_operand ctxt (Reg R15) op); (Movq, [Reg R15; (arg_loc n)]); ] @ (set_params tl (n+1))
     in
     let get_label = function
     | Gid lbl -> lbl
     | _ -> failwith "unsupported label"
     in
-    (*
-    let reg_lst = [
-      Rax; Rdx; Rcx; Rsi; Rdi; R08; R09; R10; R11
-    ] in
-    let push_lst =
-      List.map (fun r -> (Pushq, [~%r])) reg_lst
-    in
-    let pop_lst =
-      List.map (fun r -> (Popq, [~%r])) (List.rev reg_lst)
-    in
-    *)
+    let arg_offset = if (List.length lst) < 7 then 0 else ((List.length lst) - 6) * 8 in
     [
+      (* Allocates space for rbp-relatives within this block *)
+      (Subq, [~$256; ~%Rsp]);
       (Pushq, [~%Rax]);
-
+      (Pushq, [~%Rbp]);
       (Pushq, [~%Rdx]);
       (Pushq, [~%Rcx]);
       (Pushq, [~%Rsi]);
@@ -344,19 +341,24 @@ let compile_insn ctxt ((uid:uid), (i:Ll.insn)) : X86.ins list =
       (Pushq, [~%R09]);
       (Pushq, [~%R10]);
       (Pushq, [~%R11]);
+      (Pushq, [~%R12]);
 
       (* (Movq, [~$(List.length lst); ~%R09]); *)
     ] @
     [
-      (Pushq, [~%Rbp]);
-      (Movq, [~%Rsp; ~%Rbp]);
-      (Subq, [~$128; ~%Rsp]);
+      
+      (Subq, [~$arg_offset; ~%Rsp]);
+      
+      
     ] @ (set_params lst 0) @
     [
-      (Callq, [Imm (Lbl (Platform.mangle (get_label op)))]);
-      (Addq, [~$128; ~%Rsp]);
-      (Popq, [~%Rbp]);
+      (Movq, [~%Rsp; ~%Rbp]);
 
+      (Subq, [~$8; ~%Rbp]);
+      (Callq, [Imm (Lbl (Platform.mangle (get_label op)))]);
+      (Addq, [~$arg_offset; ~%Rsp]);
+      
+      (Popq, [~%R12]);
       (Popq, [~%R11]);
       (Popq, [~%R10]);
       (Popq, [~%R09]);
@@ -365,9 +367,13 @@ let compile_insn ctxt ((uid:uid), (i:Ll.insn)) : X86.ins list =
       (Popq, [~%Rsi]);
       (Popq, [~%Rcx]);
       (Popq, [~%Rdx]);
+      (Popq, [~%Rbp]);
 
       (Movq, [~%Rax; lookup ctxt.layout uid]);
+      (* (Movq, [~$69; lookup ctxt.layout uid]); *)
       (Popq, [~%Rax]);
+      (Addq, [~$256; ~%Rsp]);
+      
     ]
   | Gep (typ, op, oplst) ->
     compile_gep ctxt (typ, op) oplst @

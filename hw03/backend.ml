@@ -91,6 +91,13 @@ let compile_operand ctxt dest : Ll.operand -> ins = function
 let compile_operand_int ctxt : Ll.operand -> int = function
   | Null    -> 0
   | Const i -> Int64.to_int i
+  | Id u    ->
+    (match lookup ctxt.layout u with
+    | Imm (Lit i) -> Int64.to_int i
+    | _ -> failwith ("Compile_operand_int: " ^ u ^ " could not be resolved to int")
+    )
+  (* gid -> use lbl gid + rid to get address
+    not sure where to go from here *)
   | _       -> failwith "Compile_operand_int: Not yet implemented for uid/gid"
 
 (* Compiling call  ---------------------------------------------------------- *)
@@ -192,12 +199,13 @@ let compile_gep ctxt (op:Ll.ty * Ll.operand) (path:Ll.operand list) : ins list =
       (Movq, [Imm (Lbl gid); ~%R10]);
       (Addq, [~%Rip; ~%R10]) (* Puts the absolute address of op (base) into R10 in a way that works nicely with load *)
     ] @ gep_helper ctxt R10 (lookup ctxt.tdecls t) (List.tl path)
-  | Ptr (Namedt t), Id uid -> failwith "Gep: not yet implemented for uid"
+  | Ptr (Namedt t), Id uid ->
+    [(compile_operand ctxt (Reg R10) (Id uid));] @ gep_helper ctxt R10 (lookup ctxt.tdecls t) (List.tl path)
   | Ptr t, Gid gid -> (*| Gid gid -> (Movq, [Ind3 (Lbl gid, Rip); dest])*)
     [
       (Movq, [Imm (Lbl gid); ~%R10]);
       (Addq, [~%Rip; ~%R10]) (* Puts the absolute address of op (base) into R10 in a way that works nicely with load *)
-    ] @ gep_helper ctxt R10 t (List.tl path)
+    ] @ gep_helper ctxt R10 t (List.tl path) (* TODO: DO NOT IGNORE FIRST INDEX IF OP POITNS TO AN ARRAY *)
   | Ptr t, Id uid -> failwith "Gep: not yet implemented for uid"
   | Ptr t, _ -> failwith "Gep: op must be a gid or uid"
   | _ -> failwith "Gep: op must be a pointer"
@@ -305,10 +313,17 @@ let compile_insn ctxt ((uid:uid), (i:Ll.insn)) : X86.ins list =
       (Addq, [~%Rbp; ~%R10]);
       (Movq, [~%R10; x_op1]) (* Returns an absolute address to the pointer *)
     ]
-  | Bitcast (typ1, op, typ2) -> [ (* I think incomplete but it works for the basic level *)
+  | Bitcast (typ1, op, typ2) -> 
+    (match op with  (*Gid gid -> (Movq, [Ind3 (Lbl gid, Rip); dest])*)
+    | Gid g -> [
+        (Movq, [Imm (Lbl g); ~%R10]);
+        (Addq, [~%Rip; ~%R10]);
+        (Movq, [~%R10; lookup ctxt.layout uid])
+      ]
+    | _     -> [
       (compile_operand ctxt (Reg R10) op);
       (Movq, [~%R10; lookup ctxt.layout uid])
-    ]
+      ])
     (* Ind3 (Lit (Int64.of_int (8 * (n-6))), Rsp) *)
   | Call (typ, op, lst) ->
     let rec set_params (lst:(Ll.ty * Ll.operand) list) (n:int) =

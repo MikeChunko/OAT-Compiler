@@ -349,7 +349,7 @@ let compile_insn ctxt ((uid:uid), (i:Ll.insn)) : X86.ins list =
     [
       (* Allocates space for rbp-relatives within this block *)
       (Subq, [~$256; ~%Rsp]);
-      (Pushq, [~%Rax]);
+
       (Pushq, [~%Rbp]);
       (Pushq, [~%Rdx]);
       (Pushq, [~%Rcx]);
@@ -359,10 +359,6 @@ let compile_insn ctxt ((uid:uid), (i:Ll.insn)) : X86.ins list =
       (Pushq, [~%R09]);
       (Pushq, [~%R10]);
       (Pushq, [~%R11]);
-      (Pushq, [~%R12]);
-      (Pushq, [~%R13]);
-      (Pushq, [~%R14]);
-      (Pushq, [~%R15]);
 
       (* (Movq, [~$(List.length lst); ~%R09]); *)
     ] @
@@ -379,10 +375,6 @@ let compile_insn ctxt ((uid:uid), (i:Ll.insn)) : X86.ins list =
       (Callq, [Imm (Lbl (Platform.mangle (get_label op)))]);
       (Addq, [~$arg_offset; ~%Rsp]);
       
-      (Popq, [~%R15]);
-      (Popq, [~%R14]);
-      (Popq, [~%R13]);
-      (Popq, [~%R12]);
       (Popq, [~%R11]);
       (Popq, [~%R10]);
       (Popq, [~%R09]);
@@ -395,7 +387,6 @@ let compile_insn ctxt ((uid:uid), (i:Ll.insn)) : X86.ins list =
 
       (Movq, [~%Rax; lookup ctxt.layout uid]);
       (* (Movq, [~$69; lookup ctxt.layout uid]); *)
-      (Popq, [~%Rax]);
       (Addq, [~$256; ~%Rsp]);
       
     ]
@@ -473,7 +464,7 @@ let compile_block (ctxt:ctxt) (blk:Ll.block) : X86.ins list =
 let compile_lbl_block lbl ctxt blk : elem =
   Asm.text lbl (compile_block ctxt blk)
 
-let compile_fun_block (ctxt:ctxt) (blk:Ll.block) : X86.ins list =
+let compile_fun_block (ctxt:ctxt) (blk:Ll.block) (start:bool): X86.ins list =
   let split_ret (lst:X86.ins list) : (X86.ins list * X86.ins) =
     let lst' = List.rev lst in
     match lst' with
@@ -481,24 +472,44 @@ let compile_fun_block (ctxt:ctxt) (blk:Ll.block) : X86.ins list =
     | h::tl -> (List.rev tl, h) in
   let (lst,ret) = split_ret (compile_block ctxt blk) in
   let open X86.Asm in
+  let is_return = match ret with
+  | (Retq, ops) -> true
+  | _ -> false
+  in
+  (if start then
   [
-    (*
+    (Addq, [~$0; ~%Rax]);
+    (Addq, [~$0; ~%Rax]);
+    (Addq, [~$0; ~%Rax]);
+    (Addq, [~$0; ~%Rax]);
+    (Addq, [~$0; ~%Rax]);
+    (*)
     (Pushq, [~%R12]);
     (Pushq, [~%R13]);
     (Pushq, [~%R14]);
     (Pushq, [~%R15]);
     *)
+    
   ]
+  else [])
   @ lst
   @
+  (if is_return then
   [
+    (Addq, [~$0; ~%Rbx]);
+    (Addq, [~$0; ~%Rbx]);
+    (Addq, [~$0; ~%Rbx]);
+    (Addq, [~$0; ~%Rbx]);
+    (Addq, [~$0; ~%Rbx]);
     (*
     (Popq, [~%R15]);
     (Popq, [~%R14]);
     (Popq, [~%R13]);
     (Popq, [~%R12]);
     *)
+    
   ]
+  else [])
   @ [ret]
 
 (* compile_fdecl ------------------------------------------------------------ *)
@@ -552,8 +563,13 @@ let compile_fdecl (tdecls:(Ll.tid * Ll.ty) list) (name:string) {f_ty; f_param; f
         Text ((Movq, [~$0; ~%Rax]) :: (Movq, [~%Rsp; ~%Rbp]) :: compile_block { tdecls = tdecls; layout = block_layout} blk)
       }
       else
+      if start then
       {lbl = name; global = start; asm =
-        Text (compile_fun_block { tdecls = tdecls; layout = block_layout} blk)
+        Text (compile_fun_block { tdecls = tdecls; layout = block_layout} blk true)
+      }
+      else
+      {lbl = name; global = start; asm =
+        Text (compile_fun_block { tdecls = tdecls; layout = block_layout} blk false)
       }
     ] in
     let y = (match blk_lst with

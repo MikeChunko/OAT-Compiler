@@ -13,6 +13,17 @@ let icmp_tests =
 ; "llprograms/icmp2.ll", 0L
 ; "llprograms/icmp3.ll", 1L ]
 
+let tetrate_tests = 
+[ "llprograms/power1.ll", 4L
+; "llprograms/power2.ll", 1L
+; "llprograms/power3.ll", 81L 
+; "llprograms/tetrate1.ll", 16L
+; "llprograms/tetrate2.ll", 1L
+; "llprograms/tetrate3.ll", 27L
+; "llprograms/tetrate4.ll", 4L
+]
+
 let provided_tests : suite = [
-  GradedTest ("icmp tests", 0, executed icmp_tests)
+  GradedTest ("icmp tests", 0, executed icmp_tests);
+  GradedTest ("tetrate_tests", 0, executed tetrate_tests)
 ]

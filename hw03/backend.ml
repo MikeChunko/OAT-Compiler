@@ -360,6 +360,9 @@ let compile_insn ctxt ((uid:uid), (i:Ll.insn)) : X86.ins list =
       (Pushq, [~%R10]);
       (Pushq, [~%R11]);
       (Pushq, [~%R12]);
+      (Pushq, [~%R13]);
+      (Pushq, [~%R14]);
+      (Pushq, [~%R15]);
 
       (* (Movq, [~$(List.length lst); ~%R09]); *)
     ] @
@@ -376,6 +379,9 @@ let compile_insn ctxt ((uid:uid), (i:Ll.insn)) : X86.ins list =
       (Callq, [Imm (Lbl (Platform.mangle (get_label op)))]);
       (Addq, [~$arg_offset; ~%Rsp]);
       
+      (Popq, [~%R15]);
+      (Popq, [~%R14]);
+      (Popq, [~%R13]);
       (Popq, [~%R12]);
       (Popq, [~%R11]);
       (Popq, [~%R10]);
@@ -538,7 +544,7 @@ let stack_layout (args:Ll.uid list) ((block:Ll.block), (lbled_blocks:(lbl*block)
 let compile_fdecl (tdecls:(Ll.tid * Ll.ty) list) (name:string) {f_ty; f_param; f_cfg} : X86.prog =
   let block_layout = stack_layout f_param f_cfg in
   let open Asm in
-  let rec compile_fdecl' (tdecls:(Ll.tid * Ll.ty) list) (name:string) {f_ty; f_param; f_cfg} (layout:layout): X86.prog =
+  let rec compile_fdecl' (tdecls:(Ll.tid * Ll.ty) list) (start:bool) (name:string) {f_ty; f_param; f_cfg} (layout:layout): X86.prog =
     match f_cfg with (blk, blk_lst) ->
     let x = [
       if (name = "main") then
@@ -546,15 +552,15 @@ let compile_fdecl (tdecls:(Ll.tid * Ll.ty) list) (name:string) {f_ty; f_param; f
         Text ((Movq, [~$0; ~%Rax]) :: (Movq, [~%Rsp; ~%Rbp]) :: compile_block { tdecls = tdecls; layout = block_layout} blk)
       }
       else
-      {lbl = name; global = true; asm =
+      {lbl = name; global = start; asm =
         Text (compile_fun_block { tdecls = tdecls; layout = block_layout} blk)
       }
     ] in
     let y = (match blk_lst with
       | [] -> []
-      | (lbl,blk)::tl -> compile_fdecl' tdecls lbl {f_ty; f_param; f_cfg=(blk, tl)} layout)
+      | (lbl,blk)::tl -> compile_fdecl' tdecls false lbl {f_ty; f_param; f_cfg=(blk, tl)} layout)
     in x @ y in
-  print_layout block_layout; compile_fdecl' tdecls name {f_ty; f_param; f_cfg} block_layout
+  print_layout block_layout; compile_fdecl' tdecls true name {f_ty; f_param; f_cfg} block_layout
 
 (* compile_gdecl ------------------------------------------------------------ *)
 (* Compile a global value into an X86 global data declaration and map

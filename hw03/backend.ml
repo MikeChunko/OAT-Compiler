@@ -464,7 +464,7 @@ let compile_block (ctxt:ctxt) (blk:Ll.block) : X86.ins list =
 let compile_lbl_block lbl ctxt blk : elem =
   Asm.text lbl (compile_block ctxt blk)
 
-let compile_fun_block (ctxt:ctxt) (blk:Ll.block) (start:bool): X86.ins list =
+let compile_fun_block (ctxt:ctxt) (blk:Ll.block) (from_function:bool) (start:bool): X86.ins list =
   let split_ret (lst:X86.ins list) : (X86.ins list * X86.ins) =
     let lst' = List.rev lst in
     match lst' with
@@ -478,35 +478,22 @@ let compile_fun_block (ctxt:ctxt) (blk:Ll.block) (start:bool): X86.ins list =
   in
   (if start then
   [
-    (Addq, [~$0; ~%Rax]);
-    (Addq, [~$0; ~%Rax]);
-    (Addq, [~$0; ~%Rax]);
-    (Addq, [~$0; ~%Rax]);
-    (Addq, [~$0; ~%Rax]);
-    (*)
+
     (Pushq, [~%R12]);
     (Pushq, [~%R13]);
     (Pushq, [~%R14]);
     (Pushq, [~%R15]);
-    *)
     
   ]
   else [])
   @ lst
   @
-  (if is_return then
+  (if (is_return && from_function) then
   [
-    (Addq, [~$0; ~%Rbx]);
-    (Addq, [~$0; ~%Rbx]);
-    (Addq, [~$0; ~%Rbx]);
-    (Addq, [~$0; ~%Rbx]);
-    (Addq, [~$0; ~%Rbx]);
-    (*
     (Popq, [~%R15]);
     (Popq, [~%R14]);
     (Popq, [~%R13]);
     (Popq, [~%R12]);
-    *)
     
   ]
   else [])
@@ -553,23 +540,27 @@ let stack_layout (args:Ll.uid list) ((block:Ll.block), (lbled_blocks:(lbl*block)
   - the function entry code should allocate the stack storage needed
     to hold all of the local stack slots. *)
 let compile_fdecl (tdecls:(Ll.tid * Ll.ty) list) (name:string) {f_ty; f_param; f_cfg} : X86.prog =
+  let from_function = (name <> "main") in
   let block_layout = stack_layout f_param f_cfg in
   let open Asm in
   let rec compile_fdecl' (tdecls:(Ll.tid * Ll.ty) list) (start:bool) (name:string) {f_ty; f_param; f_cfg} (layout:layout): X86.prog =
     match f_cfg with (blk, blk_lst) ->
     let x = [
       if (name = "main") then
+      (* Not from a function *)
       {lbl = name; global = true; asm =
         Text ((Movq, [~$0; ~%Rax]) :: (Movq, [~%Rsp; ~%Rbp]) :: compile_block { tdecls = tdecls; layout = block_layout} blk)
       }
       else
       if start then
+      (* From a function (is a function) *)
       {lbl = name; global = start; asm =
-        Text (compile_fun_block { tdecls = tdecls; layout = block_layout} blk true)
+        Text (compile_fun_block { tdecls = tdecls; layout = block_layout} blk from_function true)
       }
       else
+      (* Don't know if from a function *)
       {lbl = name; global = start; asm =
-        Text (compile_fun_block { tdecls = tdecls; layout = block_layout} blk false)
+        Text (compile_fun_block { tdecls = tdecls; layout = block_layout} blk from_function false)
       }
     ] in
     let y = (match blk_lst with

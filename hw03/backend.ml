@@ -318,8 +318,16 @@ let compile_insn ctxt ((uid:uid), (i:Ll.insn)) (insn_count:int) : X86.ins list =
     let rec set_params (lst:(Ll.ty * Ll.operand) list) (n:int) =
       match lst with
       | [] -> []
-      | (t,op)::tl ->
-        [(compile_operand ctxt (Reg R15) op); (Movq, [Reg R15; (arg_loc_insert n)]); ] @ (set_params tl (n+1)) in
+      | (Ptr t, Gid g)::tl -> [
+        (Movq, [Imm (Lbl g); ~%R10]);
+        (Addq, [~%Rip; ~%R10]);
+        (Movq, [~%R10; ~%R15]);
+        (Movq, [Reg R15; (arg_loc_insert n)])
+      ] @ (set_params tl (n+1))
+      | (t,op)::tl -> [
+        (compile_operand ctxt (Reg R15) op); 
+        (Movq, [~%R15; (arg_loc_insert n)])
+      ] @ (set_params tl (n+1)) in
     let get_label = function
     | Gid lbl -> lbl
     | _ -> failwith "unsupported label" in

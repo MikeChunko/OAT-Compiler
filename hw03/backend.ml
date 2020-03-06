@@ -287,9 +287,13 @@ let compile_insn ctxt ((uid:uid), (i:Ll.insn)) (insn_count:int) : X86.ins list =
     [compile_operand ctxt (Reg R10) op1] @
     (match op2 with
     | Const _ | Null -> failwith "Store: Invalid pointer"
-    | Gid g -> failwith "Store: Gid store unimplemented"
-    | Id u  ->
-      [compile_operand ctxt (Reg R11) op2] @ [
+    | Gid g -> [
+        (Movq, [Imm (Lbl g); ~%R11]);
+        (Addq, [~%Rip; ~%R11]);
+        (Movq, [~$1; Ind2 R11])
+      ]
+    | Id u  -> [
+        compile_operand ctxt (Reg R11) op2;
         (Movq, [~%R10; Ind2 R11])
       ])
   | Alloca (typ) ->

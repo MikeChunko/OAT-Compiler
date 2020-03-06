@@ -290,7 +290,7 @@ let compile_insn ctxt ((uid:uid), (i:Ll.insn)) (insn_count:int) : X86.ins list =
     | Gid g -> [
         (Movq, [Imm (Lbl g); ~%R11]);
         (Addq, [~%Rip; ~%R11]);
-        (Movq, [~$1; Ind2 R11])
+        (Movq, [~%R10; Ind2 R11])
       ]
     | Id u  -> [
         compile_operand ctxt (Reg R11) op2;
@@ -329,7 +329,7 @@ let compile_insn ctxt ((uid:uid), (i:Ll.insn)) (insn_count:int) : X86.ins list =
         (Movq, [Reg R15; (arg_loc_insert n)])
       ] @ (set_params tl (n+1))
       | (t,op)::tl -> [
-        (compile_operand ctxt (Reg R15) op); 
+        (compile_operand ctxt (Reg R15) op);
         (Movq, [~%R15; (arg_loc_insert n)])
       ] @ (set_params tl (n+1)) in
     let get_label = function

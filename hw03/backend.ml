@@ -486,7 +486,7 @@ let stack_layout (args:Ll.uid list) ((block:Ll.block), (lbled_blocks:(lbl*block)
     match lst with
     | h::tl -> (h, arg_loc n) :: add_args tl (n+1)
     | [] -> [] in
-  (add_to_stack block.insns lbled_blocks 1) @ (add_args args 0)
+  (add_to_stack block.insns lbled_blocks 9) @ (add_args args 0)
 
 (* The code for the entry-point of a function must do several things:
   - since our simple compiler maps local %uids to stack slots,

@@ -318,7 +318,7 @@ let compile_insn ctxt ((uid:uid), (i:Ll.insn)) (insn_count:int) : X86.ins list =
     let rec set_params (lst:(Ll.ty * Ll.operand) list) (n:int) =
       match lst with
       | [] -> []
-      | (Ptr t, Gid g)::tl -> [
+      | (_, Gid g)::tl -> [
         (Movq, [Imm (Lbl g); ~%R10]);
         (Addq, [~%Rip; ~%R10]);
         (Movq, [~%R10; ~%R15]);

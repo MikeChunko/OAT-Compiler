@@ -337,31 +337,25 @@ let compile_insn ctxt ((uid:uid), (i:Ll.insn)) (insn_count:int) : X86.ins list =
     | _ -> failwith "unsupported label" in
     let local_offset = (256 + insn_count * 16) in
     let arg_offset = if (List.length lst) < 7 then 0 else ((List.length lst) - 6) * 8 in
+    let saved_regs = [~%Rdx;~%Rcx; ~%Rsi; ~%Rdi; ~%R08; ~%R09; ~%R10; ~%R11] in
+    let push_insns = List.map (fun reg -> (Pushq, [reg])) saved_regs in
+    let pop_insns = List.map (fun reg -> (Popq, [reg])) (List.rev saved_regs) in
     [
       (* Allocates space for rbp-relatives within this block *)
+      (Pushq, [~%Rax]);
       (Subq, [~$local_offset; ~%Rsp]);
-      (Pushq, [~%Rdx]);
-      (Pushq, [~%Rcx]);
-      (Pushq, [~%Rsi]);
-      (Pushq, [~%Rdi]);
-      (Pushq, [~%R08]);
-      (Pushq, [~%R09]);
-      (Pushq, [~%R10]);
-      (Pushq, [~%R11]);
-      (Subq, [~$arg_offset; ~%Rsp]);
-    ] @ (set_params lst 0) @ [
+    ]
+      @ push_insns @ [ (Subq, [~$arg_offset; ~%Rsp]) ] @
+      (set_params lst 0) @
+    [
       (Callq, [Imm (Lbl (Platform.mangle (get_label op)))]);
       (Addq, [~$arg_offset; ~%Rsp]);
-      (Popq, [~%R11]);
-      (Popq, [~%R10]);
-      (Popq, [~%R09]);
-      (Popq, [~%R08]);
-      (Popq, [~%Rdi]);
-      (Popq, [~%Rsi]);
-      (Popq, [~%Rcx]);
-      (Popq, [~%Rdx]);
+    ]
+      @ pop_insns @
+    [ 
       (Movq, [~%Rax; lookup ctxt.layout uid]);
       (Addq, [~$local_offset; ~%Rsp]);
+      (Popq, [~%Rax]);
     ]
   | Gep (typ, op, oplst) ->
     compile_gep ctxt (typ, op) oplst @
@@ -443,26 +437,21 @@ let compile_fun_block (ctxt:ctxt) (blk:Ll.block) (from_function:bool) (start:boo
     | h::tl -> (List.rev tl, h) in
   let (lst,ret) = split_ret (compile_block ctxt blk) in
   let open X86.Asm in
+  let saved_regs = [~%R15;~%R14; ~%R13; ~%R12; ~%Rbx] in
+    let push_insns = List.map (fun reg -> (Pushq, [reg])) saved_regs in
+    let pop_insns =  List.map (fun reg -> (Popq,  [reg])) (List.rev saved_regs) in
   let is_return = match ret with
   | (Retq, ops) -> true
   | _ -> false in
   (if start then [
     (Pushq, [~%Rbp]);
     (Movq, [~%Rsp; ~%Rbp]);
-    (Pushq, [~%Rbx]);
-    (Pushq, [~%R12]);
-    (Pushq, [~%R13]);
-    (Pushq, [~%R14]);
-    (Pushq, [~%R15]);
-  ] else []) @ lst @
-  (if (is_return && from_function) then [
-    (Popq, [~%R15]);
-    (Popq, [~%R14]);
-    (Popq, [~%R13]);
-    (Popq, [~%R12]);
-    (Popq, [~%Rbx]);
-    (Popq, [~%Rbp]);
-  ] else []) @ [ret]
+  ] @ push_insns
+  else [])
+  @ lst @
+  (if (is_return && from_function) then
+    pop_insns @ [ (Popq, [~%Rbp]); ]
+  else []) @ [ret]
 
 (* compile_fdecl ------------------------------------------------------------ *)
 

@@ -96,7 +96,7 @@ let zp_tests =
 ]
 
 let russian_peasant_mult_tests =
-	["russianMult.ll", 7566L]
+	["russianMult.ll", 35L]
 
 let trig_tests = [
   ("./trig_ll/test1.ll", 1L);

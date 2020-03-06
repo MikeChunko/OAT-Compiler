@@ -2,6 +2,7 @@
 (* Pledge: I pledge my honor that I have abided by the Stevens Honor System.  *)
 open Assert
 open Gradedtests
+open Backend
 
 (* These tests are provided by you -- they will be graded manually *)
 
@@ -106,6 +107,10 @@ let trig_tests = [
   ("./trig_ll/test20.ll", 210L);
 ]
 
+let unique_tests =
+    ["unique_nums0.ll", 0L;
+     "unique_nums1.ll", 1L]
+
 let provided_tests : suite = [
   GradedTest ("icmp tests", 0, executed icmp_tests);
   GradedTest ("gep_extra_tests", 0, executed gep_extra_tests);
@@ -118,5 +123,15 @@ let provided_tests : suite = [
   Test("non-duplicate test", Gradedtests.executed ["onenondup.ll", 5L]);
   Test("quicksort test", Gradedtests.executed ["quicksort.ll", 140L]);
   GradedTest("russian peasant tests", 5, Gradedtests.executed russian_peasant_mult_tests);
-  GradedTest("triangle_numbers", 5, Gradedtests.executed trig_tests)
+  GradedTest("triangle_numbers", 5, Gradedtests.executed trig_tests);
+  Test("Unique Nums Tests", executed unique_tests);
+  Test("maximum of three numbers test", Gradedtests.executed ["maxthree.ll", 26L]);
+  Test ("Student-Provided: arg_loc", [
+    ("1 Argument", assert_eqf (fun () -> arg_loc 0) (Reg Rdi));
+    ("6 Arguments", assert_eqf (fun () -> arg_loc 5) (Reg R09));
+    ("7 Arguments", assert_eqf (fun () -> arg_loc 6) (Ind3 (Lit 16L, Rbp)));
+    ("9 Arguments", assert_eqf (fun () -> arg_loc 8) (Ind3 (Lit 32L, Rbp)));
+  ]);
+  Test ("find_duplicate_with_sum", Gradedtests.executed ["find_duplicate_with_sum.ll", 4L]);
+  Test ("sumofsquares", Gradedtests.executed ["sumofsquares.ll", 204L])
 ]

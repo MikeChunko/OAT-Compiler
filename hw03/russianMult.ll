@@ -58,24 +58,24 @@ define i64 @main(i64 %argc, i8** %arcv) {
     br label %peasant
 peasant: ;checks if a is odd
     %alabama = load i64, i64* @a
-    %3 = call i64 @mod(i64 %alabama)
-    %5 = icmp eq i64 %3, 1
-    br i1 %5, label %odd, label %even
+    %three = call i64 @mod(i64 %alabama)
+    %five = icmp eq i64 %three, 1
+    br i1 %five, label %odd, label %even
 odd: ;adds b to accumulator
     %truck = load i64, i64* %accum
     %jam = load i64, i64* @b
-    %6 = add i64 %jam, %truck
-    store i64 %6, i64* %accum
+    %six = add i64 %jam, %truck
+    store i64 %six, i64* %accum
     
-    %1 = load i64, i64* @a
-    %2 = icmp eq i64 %1, 1
-    br i1 %2, label %finish, label %even
+    %one = load i64, i64* @a
+    %two = icmp eq i64 %one, 1
+    br i1 %two, label %finish, label %even
 even: ;updates a and b
     %bibba = load i64, i64* @b
     %apple = mul i64 %bibba, 2
     store i64 %apple, i64* @b
-    %4 = call i64 @halve(i64 %alabama)
-    store i64 %4, i64* @a
+    %four = call i64 @halve(i64 %alabama)
+    store i64 %four, i64* @a
     br label %peasant
 finish:
     %answer = load i64, i64* %accum

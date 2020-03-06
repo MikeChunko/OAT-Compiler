@@ -65,11 +65,9 @@ let lookup m x = List.assoc x m
   immediately available, and the operand Null is the 64-bit 0 value.
 
     NOTE: two important facts about global identifiers:
-
     (1) You should use (Platform.mangle gid) to obtain a string
     suitable for naming a global label on your platform (OS X expects
     "_main" while linux expects "main").
-
     (2) 64-bit assembly labels are not allowed as immediate operands.
     That is, the X86 code: movq _gid %rax which looks like it should
     put the address denoted by _gid into %rax is not allowed.
@@ -92,22 +90,18 @@ let compile_operand ctxt dest : Ll.operand -> ins = function
 
 (* You will probably find it helpful to implement a helper function that
   generates code for the LLVM IR call instruction.
-
   The code you generate should follow the x64 System V AMD64 ABI
   calling conventions, which places the first six 64-bit (or smaller)
   values in registers and pushes the rest onto the stack.  Note that,
   since all LLVM IR operands are 64-bit values, the first six
   operands will always be placed in registers.  (See the notes about
   compiling fdecl below.)
-
   [ NOTE: It is the caller's responsibility to clean up arguments
   pushed onto the stack, so you must free the stack space after the
   call returns. ]
-
   [ NOTE: Don't forget to preserve caller-save registers (only if
   needed). ]
 *)
-
 
 (* Compiling getelementptr (gep)  ------------------------------------------- *)
 
@@ -153,8 +147,7 @@ let rec gep_helper ctxt (base:X86.reg) (typ:Ll.ty) (path:Ll.operand list) : ins 
     | Struct lst ->
       (let (typ', sum) = get_type lst (compile_operand_int ctxt h) 0 in
       [(Addq,  [~$sum; ~%base])] @ gep_helper ctxt base typ' tl)
-    | Array (i,t) ->
-      ([
+    | Array (i,t) -> ([
         (compile_operand ctxt (Reg R11) (h));
         (Imulq, [~$(size_ty ctxt.tdecls t); ~%R11]);
         (Addq,  [~%R11; ~%base])
@@ -181,17 +174,21 @@ let rec gep_helper ctxt (base:X86.reg) (typ:Ll.ty) (path:Ll.operand list) : ins 
 let compile_gep ctxt (op:Ll.ty * Ll.operand) (path:Ll.operand list) : ins list =
   let open X86.Asm in
   let x = match snd op with
-  | Gid gid ->
-    [
+  | Gid gid -> [
       (Movq, [Imm (Lbl gid); ~%R10]);
       (Addq, [~%Rip; ~%R10])
     ]
-  | Id uid -> [(compile_operand ctxt (Reg R10) (Id uid))]
-  | _      -> failwith "Gep: op must be a gid or uid" in
+  | Id uid  -> [(compile_operand ctxt (Reg R10) (Id uid))]
+  | _       -> failwith "Gep: op must be a gid or uid" in
   let y = match fst op with
   | Ptr (Namedt t) -> gep_helper ctxt R10 (lookup ctxt.tdecls t) (List.tl path)
-  | Ptr t -> gep_helper ctxt R10 t (List.tl path)
-  | _ -> failwith "Gep: op must be a pointer" in
+  | Ptr (Ptr t)    -> ([
+        (compile_operand ctxt (Reg R11) (List.hd path));
+        (Imulq, [~$(size_ty ctxt.tdecls (Ptr t)); ~%R11]);
+        (Addq,  [~%R11; ~%R10])
+      ]) @ gep_helper ctxt R10 t (List.tl path)
+  | Ptr t          -> gep_helper ctxt R10 t (List.tl path)
+  | _              -> failwith "Gep: op must be a pointer" in
   x @ y
 
 (* Compiling instructions  -------------------------------------------------- *)
@@ -200,7 +197,6 @@ let compile_gep ctxt (op:Ll.ty * Ll.operand) (path:Ll.operand list) : ins list =
   function argument: either in a register or relative to %rbp,
   according to the calling conventions.  You might find it useful for
   compile_fdecl.
-
   [ NOTE: the first six arguments are numbered 0 .. 5 ] *)
 let arg_loc_insert (n:int) : operand =
   match n with
@@ -213,8 +209,7 @@ let arg_loc_insert (n:int) : operand =
   (* Puts the rest on the stack *)
   | _ -> Ind3 (Lit (Int64.of_int (8 * (n-6))), Rsp)
 
-let arg_loc (n:int) : operand =
-  match n with
+let arg_loc : int -> operand = function
   | 0 -> Reg Rdi
   | 1 -> Reg Rsi
   | 2 -> Reg Rdx
@@ -222,7 +217,7 @@ let arg_loc (n:int) : operand =
   | 4 -> Reg R08
   | 5 -> Reg R09
   (* Gets the rest from the stack *)
-  | _ -> Ind3 (Lit (Int64.of_int (8 * (n-4))), Rbp)
+  | n -> Ind3 (Lit (Int64.of_int (8 * (n-4))), Rbp)
 
 let compile_bop : Ll.bop -> X86.opcode = function
   | Add  -> Addq
@@ -323,20 +318,16 @@ let compile_insn ctxt ((uid:uid), (i:Ll.insn)) (insn_count:int) : X86.ins list =
     let rec set_params (lst:(Ll.ty * Ll.operand) list) (n:int) =
       match lst with
       | [] -> []
-      | (t,op)::tl -> (* print_string @@ "\nHELLO_WORLD: " ^ (string_of_int n) ^ ": (" ^ string_of_operand (arg_loc n)  ^ ", " ^ (op_to_str op) ^ ")\n";*)
-                      (* (compile_operand ctxt (arg_loc n) op) :: (set_params tl (n+1)) *)
-                      [(compile_operand ctxt (Reg R15) op); (Movq, [Reg R15; (arg_loc_insert n)]); ] @ (set_params tl (n+1))
-    in
+      | (t,op)::tl ->
+        [(compile_operand ctxt (Reg R15) op); (Movq, [Reg R15; (arg_loc_insert n)]); ] @ (set_params tl (n+1)) in
     let get_label = function
     | Gid lbl -> lbl
-    | _ -> failwith "unsupported label"
-    in
-    let local_offset = (256 + insn_count * 16)
-    in let arg_offset = if (List.length lst) < 7 then 0 else ((List.length lst) - 6) * 8 in
+    | _ -> failwith "unsupported label" in
+    let local_offset = (256 + insn_count * 16) in
+    let arg_offset = if (List.length lst) < 7 then 0 else ((List.length lst) - 6) * 8 in
     [
       (* Allocates space for rbp-relatives within this block *)
       (Subq, [~$local_offset; ~%Rsp]);
-      
       (Pushq, [~%Rdx]);
       (Pushq, [~%Rcx]);
       (Pushq, [~%Rsi]);
@@ -345,14 +336,10 @@ let compile_insn ctxt ((uid:uid), (i:Ll.insn)) (insn_count:int) : X86.ins list =
       (Pushq, [~%R09]);
       (Pushq, [~%R10]);
       (Pushq, [~%R11]);
-
       (Subq, [~$arg_offset; ~%Rsp]);
-    ]
-     @ (set_params lst 0) @
-    [
+    ] @ (set_params lst 0) @ [
       (Callq, [Imm (Lbl (Platform.mangle (get_label op)))]);
       (Addq, [~$arg_offset; ~%Rsp]);
-      
       (Popq, [~%R11]);
       (Popq, [~%R10]);
       (Popq, [~%R09]);
@@ -361,7 +348,6 @@ let compile_insn ctxt ((uid:uid), (i:Ll.insn)) (insn_count:int) : X86.ins list =
       (Popq, [~%Rsi]);
       (Popq, [~%Rcx]);
       (Popq, [~%Rdx]);
-
       (Movq, [~%Rax; lookup ctxt.layout uid]);
       (Addq, [~$local_offset; ~%Rsp]);
     ]
@@ -380,15 +366,14 @@ let check_call ((uid:uid), (i:Ll.insn)) : string list =
     in [get_label op]
   | _ -> []
 
-(* Debug function *)
+(* Debug functions *)
 let rec print_layout : layout -> unit = function
   | (uid, op)::tl ->
     print_string (uid ^ ", " ^ (string_of_operand op) ^ "\n");
     print_layout tl
   | [] -> print_string "end of layout.\n"
 
-let rec print_strings (lst: string list) =
-  match lst with
+let rec print_strings : string list -> unit = function
   | h::tl -> print_string h; print_strings tl
   | [] -> print_string "\n~~~~~~~~~~~~~~~~~BLOCK END~~~~~~~~~~~~~.\n"
 
@@ -410,15 +395,13 @@ let compile_terminator (ctxt:ctxt) (t: (Ll.uid * Ll.terminator)) : X86.ins list 
   | Some op -> compile_operand ctxt (Reg r) op
   | None    -> compile_operand ctxt (Reg r) Null in
   match snd t with
-  | Ret (ty', opoption) -> (* Does not free stack space or restore %rbp yet *)
-    [
+  | Ret (ty', opoption) -> [
       (get_op Rax opoption);
       (Retq, [])
     ]
-  | Br lbl -> (* Labels are not yet resolved in the stack layout. May not actually work *)
+  | Br lbl ->
     [(Jmp, [Imm (Lbl (Platform.mangle lbl))])]
-  | Cbr (op, lbl1, lbl2) -> (* Labels are not yet resolved in the stack layout. May not actually work *)
-    [
+  | Cbr (op, lbl1, lbl2) -> [
       (compile_operand ctxt (Reg R11) op);
       (Cmpq,  [~$0; ~%R11]);
       (J Neq, [Imm (Lbl (Platform.mangle lbl1))]);
@@ -450,35 +433,24 @@ let compile_fun_block (ctxt:ctxt) (blk:Ll.block) (from_function:bool) (start:boo
   let open X86.Asm in
   let is_return = match ret with
   | (Retq, ops) -> true
-  | _ -> false
-  in
-  (if start then
-  [
+  | _ -> false in
+  (if start then [
     (Pushq, [~%Rbp]);
     (Movq, [~%Rsp; ~%Rbp]);
-
     (Pushq, [~%Rbx]);
     (Pushq, [~%R12]);
     (Pushq, [~%R13]);
     (Pushq, [~%R14]);
     (Pushq, [~%R15]);
-    
-  ]
-  else [])
-  @ lst @
-  (if (is_return && from_function) then
-  [
+  ] else []) @ lst @
+  (if (is_return && from_function) then [
     (Popq, [~%R15]);
     (Popq, [~%R14]);
     (Popq, [~%R13]);
     (Popq, [~%R12]);
     (Popq, [~%Rbx]);
-
     (Popq, [~%Rbp]);
-    
-  ]
-  else [])
-  @ [ret]
+  ] else []) @ [ret]
 
 (* compile_fdecl ------------------------------------------------------------ *)
 
@@ -497,27 +469,23 @@ let stack_layout (args:Ll.uid list) ((block:Ll.block), (lbled_blocks:(lbl*block)
     | (id, instr)::tl -> (id, Ind3 (Lit (Int64.of_int (-8 * i)), Rbp))::add_to_stack tl lbled_blocks (i+1)
     | _ -> match lbled_blocks with
       | (_,blk)::blk_tl -> add_to_stack blk.insns blk_tl i
-      | _ -> []
-  in
+      | _ -> [] in
   let rec add_args (lst:Ll.uid list) (n:int) =
     match lst with
     | h::tl -> (h, arg_loc n) :: add_args tl (n+1)
-    | [] -> []
-  in
+    | [] -> [] in
   (add_to_stack block.insns lbled_blocks 1) @ (add_args args 0)
 
 (* The code for the entry-point of a function must do several things:
   - since our simple compiler maps local %uids to stack slots,
     compiling the control-flow-graph body of an fdecl requires us to
     compute the layout (see the discussion of locals and layout)
-
   - the function code should also comply with the calling
     conventions, typically by moving arguments out of the parameter
     registers (or stack slots) into local storage space.  For our
     simple compilation strategy, that local storage space should be
     in the stack. (So the function parameters can also be accounted
     for in the layout.)
-
   - the function entry code should allocate the stack storage needed
     to hold all of the local stack slots. *)
 let compile_fdecl (tdecls:(Ll.tid * Ll.ty) list) (name:string) {f_ty; f_param; f_cfg} : X86.prog =
@@ -532,8 +500,7 @@ let compile_fdecl (tdecls:(Ll.tid * Ll.ty) list) (name:string) {f_ty; f_param; f
       {lbl = name; global = true; asm =
         Text ((Movq, [~$0; ~%Rax]) :: (Movq, [~%Rsp; ~%Rbp]) :: compile_block { tdecls = tdecls; layout = block_layout} blk)
       }
-      else
-      if start then
+      else if start then
       (* From a function (is a function) *)
       {lbl = name; global = start; asm =
         Text (compile_fun_block { tdecls = tdecls; layout = block_layout} blk from_function true)
@@ -548,7 +515,7 @@ let compile_fdecl (tdecls:(Ll.tid * Ll.ty) list) (name:string) {f_ty; f_param; f
       | [] -> []
       | (lbl,blk)::tl -> compile_fdecl' tdecls false lbl {f_ty; f_param; f_cfg=(blk, tl)} layout)
     in x @ y in
-  print_layout block_layout; compile_fdecl' tdecls true name {f_ty; f_param; f_cfg} block_layout
+  compile_fdecl' tdecls true name {f_ty; f_param; f_cfg} block_layout
 
 (* compile_gdecl ------------------------------------------------------------ *)
 (* Compile a global value into an X86 global data declaration and map

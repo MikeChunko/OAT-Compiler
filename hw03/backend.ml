@@ -3,12 +3,7 @@
 (* ll ir compilation -------------------------------------------------------- *)
 open Ll
 open X86
-
-(* Overview ----------------------------------------------------------------- *)
-
-(* We suggest that you spend some time understinging this entire file and
-  how it fits with the compiler pipeline before making changes.  The suggested
-  plan for implementing the compiler is provided on the project web page. *)
+open X86.Asm
 
 (* Helpers ------------------------------------------------------------------ *)
 
@@ -35,10 +30,6 @@ let compile_cnd = function
   in the LLVM source to a _stack slot_ (i.e. a region of memory in
   the stack).  Since LLVMlite, unlike real LLVM, permits %uid locals
   to store only 64-bit data, each stack slot is an 8-byte value.
-
-  [ NOTE: For compiling LLVMlite, even i1 data values should be
-  represented as a 8-byte quad. This greatly simplifies code
-  generation. ]
 
   We call the datastructure that maps each %uid to its stack slot a
   'stack layout'.  A stack layout maps a uid to an X86 operand for
@@ -88,21 +79,6 @@ let compile_operand ctxt dest : Ll.operand -> ins = function
 
 (* Compiling call  ---------------------------------------------------------- *)
 
-(* You will probably find it helpful to implement a helper function that
-  generates code for the LLVM IR call instruction.
-  The code you generate should follow the x64 System V AMD64 ABI
-  calling conventions, which places the first six 64-bit (or smaller)
-  values in registers and pushes the rest onto the stack.  Note that,
-  since all LLVM IR operands are 64-bit values, the first six
-  operands will always be placed in registers.  (See the notes about
-  compiling fdecl below.)
-  [ NOTE: It is the caller's responsibility to clean up arguments
-  pushed onto the stack, so you must free the stack space after the
-  call returns. ]
-  [ NOTE: Don't forget to preserve caller-save registers (only if
-  needed). ]
-*)
-
 (* Compiling getelementptr (gep)  ------------------------------------------- *)
 
 (* The getelementptr instruction computes an address by indexing into
@@ -121,8 +97,7 @@ let compile_operand ctxt dest : Ll.operand -> ins = function
   - the size of a named type is the size of its definition
   - Void, i8, and functions have undefined sizes according to LLVMlite.
     Your function should simply return 0 in those cases *)
-let rec size_ty tdecls t : int =
-  match t with
+let rec size_ty tdecls : Ll.ty -> int = function
   | Void | I8 | Fun _ -> 0
   | I1 | I64 | Ptr _  -> 8
   | Struct s          -> List.fold_left (fun acc x -> acc + (size_ty tdecls x)) 0 s
@@ -136,7 +111,6 @@ let compile_operand_int ctxt : Ll.operand -> int = function
 
 (* Recursively evaluates the offset from ~%base based off of path and typ *)
 let rec gep_helper ctxt (base:X86.reg) (typ:Ll.ty) (path:Ll.operand list) : ins list =
-  let open X86.Asm in
   let rec get_type (lst:Ll.ty list) (n:int) (acc:int) : (Ll.ty * int) =
     if lst = [] then (Void, acc)
     else if n = 0 then (List.hd lst, acc)
@@ -172,7 +146,6 @@ let rec gep_helper ctxt (base:X86.reg) (typ:Ll.ty) (path:Ll.operand list) : ins 
     in (4), but relative to the type f the sub-element picked out
     by the path so far *)
 let compile_gep ctxt (op:Ll.ty * Ll.operand) (path:Ll.operand list) : ins list =
-  let open X86.Asm in
   let x = match snd op with
   | Gid gid -> [
       (Movq, [Imm (Lbl gid); ~%R10]);
@@ -198,8 +171,7 @@ let compile_gep ctxt (op:Ll.ty * Ll.operand) (path:Ll.operand list) : ins list =
   according to the calling conventions.  You might find it useful for
   compile_fdecl.
   [ NOTE: the first six arguments are numbered 0 .. 5 ] *)
-let arg_loc_insert (n:int) : operand =
-  match n with
+let arg_loc_insert : int -> operand = function
   | 0 -> Reg Rdi
   | 1 -> Reg Rsi
   | 2 -> Reg Rdx
@@ -207,7 +179,7 @@ let arg_loc_insert (n:int) : operand =
   | 4 -> Reg R08
   | 5 -> Reg R09
   (* Puts the rest on the stack *)
-  | _ -> Ind3 (Lit (Int64.of_int (8 * (n-6))), Rsp)
+  | n -> Ind3 (Lit (Int64.of_int (8 * (n-6))), Rsp)
 
 let arg_loc : int -> operand = function
   | 0 -> Reg Rdi
@@ -241,7 +213,6 @@ let get_uid : Ll.operand -> uid = function
   you need at least compile_operand, compile_call, and compile_gep
   helpers; you may introduce more as you see fit.
 
-  Here are a few notes:
   - Icmp:  the Set instruction may be of use.  Depending on how you
     compile Cbr, you may want to ensure that the value produced by
     Icmp is exactly 0 or 1.
@@ -251,7 +222,6 @@ let get_uid : Ll.operand -> uid = function
   - Alloca: needs to return a pointer into the stack
   - Bitcast: does nothing interesting at the assembly level *)
 let compile_insn ctxt ((uid:uid), (i:Ll.insn)) (insn_count:int) : X86.ins list =
-  let open X86.Asm in
   match i with
   | Binop (binop, _, op1, op2) ->
     let binopcode = compile_bop binop in
@@ -335,24 +305,24 @@ let compile_insn ctxt ((uid:uid), (i:Ll.insn)) (insn_count:int) : X86.ins list =
     let get_label = function
     | Gid lbl -> lbl
     | _ -> failwith "unsupported label" in
-    let local_offset = (256 + insn_count * 16) in
+    let local_offset = 256 + insn_count * 8 in
     let arg_offset = if (List.length lst) < 7 then 0 else ((List.length lst) - 6) * 8 in
     let saved_regs = [~%Rdx;~%Rcx; ~%Rsi; ~%Rdi; ~%R08; ~%R09; ~%R10; ~%R11] in
     let push_insns = List.map (fun reg -> (Pushq, [reg])) saved_regs in
     let pop_insns = List.map (fun reg -> (Popq, [reg])) (List.rev saved_regs) in
-    [
-      (* Allocates space for rbp-relatives within this block *)
+    [ (* Allocates space for rbp-relatives within this block *)
       (Pushq, [~%Rax]);
-      (Subq, [~$local_offset; ~%Rsp]);
+      (Subq,  [~$local_offset; ~%Rsp]);
     ]
-      @ push_insns @ [ (Subq, [~$arg_offset; ~%Rsp]) ] @
-      (set_params lst 0) @
+      @ push_insns
+      @ [(Subq, [~$arg_offset; ~%Rsp])] 
+      @ (set_params lst 0) @
     [
       (Callq, [Imm (Lbl (Platform.mangle (get_label op)))]);
-      (Addq, [~$arg_offset; ~%Rsp]);
+      (Addq,  [~$arg_offset; ~%Rsp]);
     ]
       @ pop_insns @
-    [ 
+    [
       (Movq, [~%Rax; lookup ctxt.layout uid]);
       (Addq, [~$local_offset; ~%Rsp]);
       (Popq, [~%Rax]);
@@ -360,28 +330,6 @@ let compile_insn ctxt ((uid:uid), (i:Ll.insn)) (insn_count:int) : X86.ins list =
   | Gep (typ, op, oplst) ->
     compile_gep ctxt (typ, op) oplst @
     [(Movq, [~%R10; lookup ctxt.layout uid])]
-
-let check_call ((uid:uid), (i:Ll.insn)) : string list =
-  let open X86.Asm in
-  match i with
-  | Call (typ, op, lst) ->
-    let get_label = function
-    | Gid lbl -> lbl
-    | Id lbl -> lbl
-    | _ -> failwith "unsupported label"
-    in [get_label op]
-  | _ -> []
-
-(* Debug functions *)
-let rec print_layout : layout -> unit = function
-  | (uid, op)::tl ->
-    print_string (uid ^ ", " ^ (string_of_operand op) ^ "\n");
-    print_layout tl
-  | [] -> print_string "end of layout.\n"
-
-let rec print_strings : string list -> unit = function
-  | h::tl -> print_string h; print_strings tl
-  | [] -> print_string "\n~~~~~~~~~~~~~~~~~BLOCK END~~~~~~~~~~~~~.\n"
 
 (* Compiling terminators  --------------------------------------------------- *)
 
@@ -391,12 +339,7 @@ let rec print_strings : string list -> unit = function
     any) in %rax.
   - Br should jump
   - Cbr branch should treat its operand as a boolean conditional *)
-(* type terminator =
-   | Ret of ty * operand option
-   | Br of lbl
-   | Cbr of operand * lbl * lbl *)
 let compile_terminator (ctxt:ctxt) (t: (Ll.uid * Ll.terminator)) : X86.ins list =
-  let open X86.Asm in
   let get_op r = function (* Move the operand option into Reg r where applicable *)
   | Some op -> compile_operand ctxt (Reg r) op
   | None    -> compile_operand ctxt (Reg r) Null in
@@ -418,7 +361,6 @@ let compile_terminator (ctxt:ctxt) (t: (Ll.uid * Ll.terminator)) : X86.ins list 
 
 (* We have left this helper function here for you to complete. *)
 let compile_block (ctxt:ctxt) (blk:Ll.block) : X86.ins list =
-  let open X86.Asm in
   let insn_count = List.length blk.insns in
   let rec for_instr : (Ll.uid * Ll.insn) list -> X86.ins list = function
     | h::tl -> compile_insn ctxt h insn_count @ for_instr tl
@@ -436,7 +378,6 @@ let compile_fun_block (ctxt:ctxt) (blk:Ll.block) (from_function:bool) (start:boo
     | [] -> failwith "Empty block"
     | h::tl -> (List.rev tl, h) in
   let (lst,ret) = split_ret (compile_block ctxt blk) in
-  let open X86.Asm in
   let saved_regs = [~%R15;~%R14; ~%R13; ~%R12; ~%Rbx] in
     let push_insns = List.map (fun reg -> (Pushq, [reg])) saved_regs in
     let pop_insns =  List.map (fun reg -> (Popq,  [reg])) (List.rev saved_regs) in
@@ -492,7 +433,6 @@ let stack_layout (args:Ll.uid list) ((block:Ll.block), (lbled_blocks:(lbl*block)
 let compile_fdecl (tdecls:(Ll.tid * Ll.ty) list) (name:string) {f_ty; f_param; f_cfg} : X86.prog =
   let from_function = (name <> "main") in
   let block_layout = stack_layout f_param f_cfg in
-  let open Asm in
   let rec compile_fdecl' (tdecls:(Ll.tid * Ll.ty) list) (start:bool) (name:string) {f_ty; f_param; f_cfg} (layout:layout): X86.prog =
     match f_cfg with (blk, blk_lst) ->
     let x = [

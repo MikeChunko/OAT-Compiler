@@ -1,7 +1,9 @@
 S hw01/**
 S hw02/**
 S hw03/**
+S hw04/**
 
 B hw01/_build/**
 B hw02/_build/**
 B hw03/_build/**
+B hw04/_build/**

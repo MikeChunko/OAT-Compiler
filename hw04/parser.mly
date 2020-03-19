@@ -32,6 +32,8 @@ let loc (startpos:Lexing.position) (endpos:Lexing.position) (elt:'a) : 'a node =
 %token STAR     /* * */
 %token EQEQ     /* == */
 %token EQ       /* = */
+%token AND      /* & */
+%token OR       /* | */
 %token LPAREN   /* ( */
 %token RPAREN   /* ) */
 %token LBRACKET /* [ */
@@ -44,6 +46,7 @@ let loc (startpos:Lexing.position) (endpos:Lexing.position) (elt:'a) : 'a node =
 
 %left PLUS DASH
 %left STAR
+%left AND OR
 %nonassoc BANG
 %nonassoc TILDE
 %nonassoc LBRACKET
@@ -96,10 +99,12 @@ ty:
   | t=ty LBRACKET RBRACKET { RArray t }
 
 %inline bop:
+  | STAR   { Mul }
   | PLUS   { Add }
   | DASH   { Sub }
-  | STAR   { Mul }
   | EQEQ   { Eq }
+  | AND    { And }
+  | OR     { Or }
 
 %inline uop:
   | DASH  { Neg }

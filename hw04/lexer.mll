@@ -46,6 +46,8 @@
   ( "*", STAR);
   ( "+", PLUS);
   ( "-", DASH);
+  ( "<", LT);
+  ( ">", GT);
   ( "=", EQ);
   ( "==", EQEQ);
   ( "|", OR);
@@ -132,7 +134,7 @@ rule token = parse
   | whitespace+ { token lexbuf }
   | newline { newline lexbuf; token lexbuf }
 
-  | ';' | ',' | '{' | '}' | '+' | '-' | '*' | '=' | "=="
+  | ';' | ',' | '{' | '}' | '+' | '-' | '*' | '<' | '>' | '=' | "=="
   | "!=" | '&' | '|' | '!' | '~' | '(' | ')' | '[' | ']'
     { create_token lexbuf }
 

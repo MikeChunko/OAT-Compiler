@@ -27,9 +27,12 @@ let loc (startpos:Lexing.position) (endpos:Lexing.position) (elt:'a) : 'a node =
 %token COMMA    /* , */
 %token LBRACE   /* { */
 %token RBRACE   /* } */
+%token STAR     /* * */
 %token PLUS     /* + */
 %token DASH     /* - */
-%token STAR     /* * */
+%token SHL      /* << */
+%token SHR      /* >> */
+%token SAR      /* >>> */
 %token LT       /* < */
 %token GT       /* > */
 %token EQEQ     /* == */
@@ -49,6 +52,7 @@ let loc (startpos:Lexing.position) (endpos:Lexing.position) (elt:'a) : 'a node =
 %left AND OR
 %left EQEQ
 %left LT GT
+%left SHL SHR SAR
 %left PLUS DASH
 %left STAR
 %nonassoc BANG
@@ -106,6 +110,9 @@ ty:
   | STAR   { Mul }
   | PLUS   { Add }
   | DASH   { Sub }
+  | SHL    { Shl }
+  | SHR    { Shr }
+  | SAR    { Sar }
   | LT     { Lt }
   | GT     { Gt }
   | EQEQ   { Eq }

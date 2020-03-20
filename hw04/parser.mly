@@ -140,9 +140,11 @@ ty:
 
 gexp:
   | i=INT      { loc $startpos $endpos @@ CInt i }
-  | t=ty NULL  { loc $startpos $endpos @@ CNull t }
   | s=STRING   { loc $startpos $endpos @@ CStr s}
+  | t=ty NULL  { loc $startpos $endpos @@ CNull t }
   | b=BOOL     { loc $startpos $endpos @@ CBool b }
+  | t=ty LBRACKET RBRACKET LBRACE els=separated_list(COMMA, gexp) RBRACE
+                        { loc $startpos $endpos @@ CArr (t, els) }
 
 lhs:
   | id=IDENT            { loc $startpos $endpos @@ Id id }
@@ -150,39 +152,39 @@ lhs:
                         { loc $startpos $endpos @@ Index (e, i) }
 
 exp:
+  | id=IDENT            { loc $startpos $endpos @@ Id id }
   | i=INT               { loc $startpos $endpos @@ CInt i }
-  | t=ty NULL           { loc $startpos $endpos @@ CNull t }
   | s=STRING            { loc $startpos $endpos @@ CStr s}
+  | t=ty NULL           { loc $startpos $endpos @@ CNull t }
   | b=BOOL              { loc $startpos $endpos @@ CBool b }
+  | e=exp LBRACKET i=exp RBRACKET
+                        { loc $startpos $endpos @@ Index (e, i) }
+  | e=exp LPAREN es=separated_list(COMMA, exp) RPAREN
+                        { loc $startpos $endpos @@ Call (e,es) }
   | NEW t=ty LBRACKET RBRACKET LBRACE els=separated_list(COMMA, exp) RBRACE
                         { loc $startpos $endpos @@ CArr (t, els) }
   | NEW t=ty LBRACKET e=exp RBRACKET
                         { loc $startpos $endpos @@ NewArr (t, e) }
   | e1=exp b=bop e2=exp { loc $startpos $endpos @@ Bop (b, e1, e2) }
   | u=uop e=exp         { loc $startpos $endpos @@ Uop (u, e) }
-  | id=IDENT            { loc $startpos $endpos @@ Id id }
-  | e=exp LBRACKET i=exp RBRACKET
-                        { loc $startpos $endpos @@ Index (e, i) }
-  | e=exp LPAREN es=separated_list(COMMA, exp) RPAREN
-                        { loc $startpos $endpos @@ Call (e,es) }
   | LPAREN e=exp RPAREN { e }
 
 vdecl:
   | VAR id=IDENT EQ init=exp { (id, init) }
 
 stmt:
-  | d=vdecl SEMI        { loc $startpos $endpos @@ Decl(d) }
   | p=lhs EQ e=exp SEMI { loc $startpos $endpos @@ Assn(p,e) }
+  | d=vdecl SEMI        { loc $startpos $endpos @@ Decl(d) }
+  | RETURN e=exp SEMI   { loc $startpos $endpos @@ Ret(Some e) }
+  | RETURN SEMI         { loc $startpos $endpos @@ Ret(None) }
   | e=exp LPAREN es=separated_list(COMMA, exp) RPAREN SEMI
                         { loc $startpos $endpos @@ SCall (e, es) }
   | ifs=if_stmt         { ifs }
-  | RETURN SEMI         { loc $startpos $endpos @@ Ret(None) }
-  | RETURN e=exp SEMI   { loc $startpos $endpos @@ Ret(Some e) }
-  | WHILE LPAREN e=exp RPAREN b=block
-                        { loc $startpos $endpos @@ While(e, b) }
   | FOR LPAREN d=separated_list(COMMA, vdecl) SEMI c=option(exp) SEMI
                         s=option(stmt) RPAREN b=block
                         { loc $startpos $endpos @@ For(d, c, s, b) }
+  | WHILE LPAREN e=exp RPAREN b=block
+                        { loc $startpos $endpos @@ While(e, b) }
 
 block:
   | LBRACE stmts=list(stmt) RBRACE { stmts }

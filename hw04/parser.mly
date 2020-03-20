@@ -145,6 +145,8 @@ gexp:
   | b=BOOL     { loc $startpos $endpos @@ CBool b }
   | t=ty LBRACKET RBRACKET LBRACE els=separated_list(COMMA, gexp) RBRACE
                         { loc $startpos $endpos @@ CArr (t, els) }
+   | NEW t=ty LBRACKET RBRACKET LBRACE els=separated_list(COMMA, gexp) RBRACE
+                        { loc $startpos $endpos @@ CArr (t, els) }
 
 lhs:
   | id=IDENT            { loc $startpos $endpos @@ Id id }

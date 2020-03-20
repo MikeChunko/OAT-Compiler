@@ -139,7 +139,6 @@ rule token = parse
             Printf.sprintf "# can only be the 1st char in a line.")) }
   | "true" { BOOL (true) }
   | "false" { BOOL (false) }
-  | (character | digit | punctuation)* '"' { string false lexbuf }
   | lowercase (digit | character | '_')* { create_token lexbuf }
   | digit+ | "0x" hexdigit+ { INT (Int64.of_string (lexeme lexbuf)) }
   | whitespace+ { token lexbuf }

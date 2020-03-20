@@ -18,6 +18,7 @@ let loc (startpos:Lexing.position) (endpos:Lexing.position) (elt:'a) : 'a node =
 %token TBOOL    /* bool */
 %token TVOID    /* void */
 %token TSTRING  /* string */
+
 %token IF       /* if */
 %token ELSE     /* else */
 %token WHILE    /* while */
@@ -52,6 +53,7 @@ let loc (startpos:Lexing.position) (endpos:Lexing.position) (elt:'a) : 'a node =
 %token BANG     /* ! */
 %token GLOBAL   /* global */
 %token NEW      /* new */
+%token FOR      /* for */
 
 %left IOR
 %left IAND
@@ -178,6 +180,9 @@ stmt:
   | RETURN e=exp SEMI   { loc $startpos $endpos @@ Ret(Some e) }
   | WHILE LPAREN e=exp RPAREN b=block
                         { loc $startpos $endpos @@ While(e, b) }
+  | FOR LPAREN d=separated_list(COMMA, vdecl) SEMI c=option(exp) SEMI
+                        s=option(stmt) RPAREN b=block
+                        { loc $startpos $endpos @@ For(d, c, s, b) }
 
 block:
   | LBRACE stmts=list(stmt) RBRACE { stmts }

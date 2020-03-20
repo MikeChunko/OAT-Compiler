@@ -51,7 +51,7 @@ let loc (startpos:Lexing.position) (endpos:Lexing.position) (elt:'a) : 'a node =
 %token TILDE    /* ~ */
 %token BANG     /* ! */
 %token GLOBAL   /* global */
-
+%token NEW      /* new */
 
 %left IOR
 %left IAND
@@ -152,6 +152,10 @@ exp:
   | t=ty NULL           { loc $startpos $endpos @@ CNull t }
   | s=STRING            { loc $startpos $endpos @@ CStr s}
   | b=BOOL              { loc $startpos $endpos @@ CBool b }
+  | NEW t=ty LBRACKET RBRACKET LBRACE els=separated_list(COMMA, exp) RBRACE
+                        { loc $startpos $endpos @@ CArr (t, els) }
+  | NEW t=ty LBRACKET e=exp RBRACKET
+                        { loc $startpos $endpos @@ NewArr (t, e) }
   | e1=exp b=bop e2=exp { loc $startpos $endpos @@ Bop (b, e1, e2) }
   | u=uop e=exp         { loc $startpos $endpos @@ Uop (u, e) }
   | id=IDENT            { loc $startpos $endpos @@ Id id }

@@ -39,6 +39,7 @@
   ("global", GLOBAL);
 
   (* Symbols *)
+  ( "new", NEW);
   ( ";", SEMI);
   ( ",", COMMA);
   ( "{", LBRACE);
@@ -128,6 +129,7 @@ let punctuation = ' ' | '.' | '/' | '\'' | ',' | '?' | '<' | '>' | ';' | ':'
 
 rule token = parse
   | eof { EOF }
+  | ';' { create_token lexbuf}
   | "/*" { start_lex := start_pos_of_lexbuf lexbuf; comments 0 lexbuf }
   | '"' { reset_str(); start_lex := start_pos_of_lexbuf lexbuf; string false lexbuf }
   | '#' { let p = lexeme_start_p lexbuf in

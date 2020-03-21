@@ -199,7 +199,10 @@ let rec cmp_exp (c:Ctxt.t) (exp:Ast.exp node) : Ll.ty * Ll.operand * stream =
   | CStr s        -> failwith "cmp_exp: unimplemented CStr"
   | CArr (ty,es)  -> failwith "cmp_exp: unimplemented CArr"
   | NewArr (ty,e) -> failwith "cmp_exp: unimplemented NewArr"
-  | Id id         -> failwith "cmp_exp: unimplemented Id"
+  | Id id         ->
+    print_string @@ "Looking up " ^ id ^ " in context\n";
+    let (ty, op) = Ctxt.lookup id c in
+    (ty, op, [])
   | Index (src,i) -> failwith "cmp_exp: unimplemented Index"
   | Call (e,es)   -> failwith "cmp_exp: unimplemented Call"
   | Bop (b,e1,e2) -> 
@@ -251,13 +254,19 @@ let rec cmp_stmt (c:Ctxt.t) (rt:Ll.ty) (stmt:Ast.stmt node) : Ctxt.t * stream =
     let e = (snd v) in
     let (ty, op, s) = cmp_exp c e in
     let uid = gensym (fst v) in
-    Ctxt.add c (fst v) (ty, op), List.rev
+    let new_ctxt = Ctxt.add c (fst v) (ty, Id uid) in
+    new_ctxt, List.rev
     [I (uid, Alloca ty);
      I (uid, Store (ty, op, Id uid))] @ s
   | Assn (n1, n2) -> 
-    let (ty1, op1, s1) = cmp_exp c n1 in
-    let (ty2, op2, s2) = cmp_exp c n2 in
-    failwith "poops"
+    let (ty1, op1, _) = cmp_exp c n1 in
+      let uid = match op1 with
+      | Id uid -> uid
+      | _ -> failwith "Assn: Invalid input"
+      in
+    let (ty2, op2, _) = cmp_exp c n2 in
+    (* TODO: check if ty1 and ty2 are the same type *)
+    c, [I (uid, Store(ty1, op2, Id uid))]
   | _ -> failwith "cmp_stmt: Unimplemented"
 
 (* Compile a series of statements *)

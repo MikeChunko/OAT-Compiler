@@ -30,27 +30,27 @@ let lift : (uid * insn) list -> stream = List.rev_map (fun (x,i) -> I (x,i))
 
 (* Build a CFG and collection of global variable definitions from a stream *)
 let cfg_of_stream (code:stream) : Ll.cfg * (Ll.gid * Ll.gdecl) list  =
-    let gs, einsns, insns, term_opt, blks = List.fold_left
-      (fun (gs, einsns, insns, term_opt, blks) e ->
-        match e with
-        | L l ->
-           begin match term_opt with
-           | None ->
-              if (List.length insns) = 0 then (gs, einsns, [], None, blks)
-              else failwith @@ Printf.sprintf "build_cfg: block labeled %s has\
-                                               no terminator" l
-           | Some term ->
-              (gs, einsns, [], None, (l, {insns; term})::blks)
-           end
-        | T t  -> (gs, einsns, [], Some (Llutil.Parsing.gensym "tmn", t), blks)
-        | I (uid,insn)  -> (gs, einsns, (uid,insn)::insns, term_opt, blks)
-        | G (gid,gdecl) ->  ((gid,gdecl)::gs, einsns, insns, term_opt, blks)
-        | E (uid,i) -> (gs, (uid, i)::einsns, insns, term_opt, blks)
-      ) ([], [], [], None, []) code in
-    match term_opt with
-    | None -> failwith "build_cfg: entry block has no terminator"
-    | Some term -> let insns = einsns @ insns in
-       ({insns; term}, blks), gs
+  let gs, einsns, insns, term_opt, blks = List.fold_left
+    (fun (gs, einsns, insns, term_opt, blks) e ->
+      match e with
+      | L l ->
+        begin match term_opt with
+        | None ->
+          if (List.length insns) = 0 then (gs, einsns, [], None, blks)
+          else failwith @@ Printf.sprintf "build_cfg: block labeled %s has\
+                                            no terminator" l
+        | Some term ->
+          (gs, einsns, insns, None, (l, {insns; term})::blks) (* Had to change this too *)
+        end
+      | T t  -> (gs, einsns, insns, Some (Llutil.Parsing.gensym "tmn", t), blks) (* Had to change this *)
+      | I (uid,insn)  -> (gs, einsns, (uid,insn)::insns, term_opt, blks)
+      | G (gid,gdecl) ->  ((gid,gdecl)::gs, einsns, insns, term_opt, blks)
+      | E (uid,i) -> (gs, (uid, i)::einsns, insns, term_opt, blks)
+    ) ([], [], [], None, []) code in
+  match term_opt with
+  | None -> failwith "build_cfg: entry block has no terminator"
+  | Some term -> let insns = einsns @ insns in
+    ({insns; term}, blks), gs
 
 (* compilation contexts ----------------------------------------------------- *)
 
@@ -116,10 +116,29 @@ and cmp_ret_ty : Ast.ret_ty -> Ll.ty = function
 and cmp_fty (ts, r) : Ll.fty =
   List.map cmp_ty ts, cmp_ret_ty r
 
-let typ_of_binop : Ast.binop -> Ast.ty * Ast.ty * Ast.ty = function
-  | Add | Mul | Sub | Shl | Shr | Sar | IAnd | IOr -> (TInt, TInt, TInt)
-  | Eq | Neq | Lt | Lte | Gt | Gte -> (TInt, TInt, TBool)
-  | And | Or -> (TBool, TBool, TBool)
+let typ_of_binop : Ast.binop -> Ll.ty * Ll.ty * Ll.ty = function
+  | Add | Mul | Sub | Shl | Shr | Sar | IAnd | IOr -> (I64, I64, I64)
+  | Eq | Neq | Lt | Lte | Gt | Gte -> (I64, I64, I1)
+  | And | Or -> (I1, I1, I1)
+
+let cmp_binop bop ty op1 op2 : insn = let open Ll in
+  match bop with
+  | Ast.Add  -> Binop (Add, ty, op1, op2)
+  | Ast.Mul  -> Binop (Mul, ty, op1, op2)
+  | Ast.Sub  -> Binop (Sub, ty, op1, op2)
+  | Ast.And  -> Binop (And, ty, op1, op2)
+  | Ast.IAnd -> Binop (And, ty, op1, op2)
+  | Ast.IOr  -> Binop (Or, ty, op1, op2)
+  | Ast.Or   -> Binop (Or, ty, op1, op2)
+  | Ast.Shl  -> Binop (Shl, ty, op1, op2)
+  | Ast.Shr  -> Binop (Lshr, ty, op1, op2)
+  | Ast.Sar  -> Binop (Ashr, ty, op1, op2)
+  | Ast.Eq   -> Icmp  (Eq, ty, op1, op2)
+  | Ast.Neq  -> Icmp  (Ne, ty, op1, op2)
+  | Ast.Lt   -> Icmp  (Slt, ty, op1, op2)
+  | Ast.Lte  -> Icmp  (Sle, ty, op1, op2)
+  | Ast.Gt   -> Icmp  (Sgt, ty, op1, op2)
+  | Ast.Gte  -> Icmp  (Sge, ty, op1, op2)
 
 let typ_of_unop : Ast.unop -> Ast.ty * Ast.ty = function
   | Neg | Bitnot -> (TInt, TInt)
@@ -165,10 +184,33 @@ let oat_alloc_array (t:Ast.ty) (size:Ll.operand) : Ll.ty * operand * stream =
      that compiles an expression and optionally inserts a bitcast to the
      desired Ll type. This is useful for dealing with OAT identifiers that
      correspond to gids that don't quite have the type you want
-
-*)
+*) (* type elt =
+        | L of Ll.lbl             (* block labels *)
+        | I of uid * Ll.insn      (* instruction *)
+        | T of Ll.terminator      (* block terminators *)
+        | G of gid * Ll.gdecl     (* hoisted globals (usually strings) *)
+        | E of uid * Ll.insn      (* hoisted entry block instructions *)
+      type stream = elt list*)
 let rec cmp_exp (c:Ctxt.t) (exp:Ast.exp node) : Ll.ty * Ll.operand * stream =
-  failwith "cmp_exp unimplemented"
+  match exp.elt with
+  | CNull ty      -> failwith "cmp_exp: unimplemented CNull"
+  | CBool b       -> failwith "cmp_exp: unimplemented CBool"
+  | CInt i        -> I64, Const i, []
+  | CStr s        -> failwith "cmp_exp: unimplemented CStr"
+  | CArr (ty,es)  -> failwith "cmp_exp: unimplemented CArr"
+  | NewArr (ty,e) -> failwith "cmp_exp: unimplemented NewArr"
+  | Id id         -> failwith "cmp_exp: unimplemented Id"
+  | Index (src,i) -> failwith "cmp_exp: unimplemented Index"
+  | Call (e,es)   -> failwith "cmp_exp: unimplemented Call"
+  | Bop (b,e1,e2) -> 
+    let (ty1, op1, s1) = cmp_exp c e1 in 
+    let (ty2, op2, s2) = cmp_exp c e2 in 
+    let newid = gensym "bop" in
+    let (t1, t2, t3) = typ_of_binop b in
+    if t1 <> ty1 || t2 <> ty2 then failwith "cmp_exp: Invalid types provided"
+    else (t3, Id newid, s1 @ s2 @ [I (newid, cmp_binop b t3 op1 op2)])
+    (*failwith "cmp_exp: unimplemented Bop"*)
+  | Uop (u,e)     -> failwith "cmp_exp: unimplemented Uop"
 
 (* Compile a statement in context c with return typ rt. Return a new context,
    possibly extended with new local bindings, and the instruction stream
@@ -190,16 +232,29 @@ let rec cmp_exp (c:Ctxt.t) (exp:Ast.exp node) : Ll.ty * Ll.operand * stream =
    - compiling the left-hand-side of an assignment is almost exactly like
      compiling the Id or Index expression. Instead of loading the resulting
      pointer, you just need to store to it!
- *)
+ *)(*type stmt =
+    Assn of Ast.exp Ast.node * Ast.exp Ast.node
+  | Decl of Ast.vdecl
+  | Ret of Ast.exp Ast.node option
+  | SCall of Ast.exp Ast.node * Ast.exp Ast.node list
+  | If of Ast.exp Ast.node * Ast.stmt Ast.node list * Ast.stmt Ast.node list
+  | For of Ast.vdecl list * Ast.exp Ast.node option *
+      Ast.stmt Ast.node option * Ast.stmt Ast.node list
+  | While of Ast.exp Ast.node * Ast.stmt Ast.node list*)
 let rec cmp_stmt (c:Ctxt.t) (rt:Ll.ty) (stmt:Ast.stmt node) : Ctxt.t * stream =
-  failwith "cmp_stmt not implemented"
+  match stmt.elt with
+  | Ret (Some e) ->
+    let (ty, op, s) = cmp_exp c e in
+    let strm = s @ [T (Ret (ty, Some (op)))] in
+    c, strm
+  | _ -> failwith "cmp_stmt: Unimplemented"
 
 (* Compile a series of statements *)
 and cmp_block (c:Ctxt.t) (rt:Ll.ty) (stmts:Ast.block) : stream =
   snd @@ List.fold_left (fun (c, code) s ->
-      let c, stmt_code = cmp_stmt c rt s in
-      c, code >@ stmt_code
-    ) (c,[]) stmts
+    let c, stmt_code = cmp_stmt c rt s in
+    c, code >@ stmt_code
+  ) (c,[]) stmts
 
 (* Adds each function identifer to the context at an
    appropriately translated type.
@@ -207,12 +262,12 @@ and cmp_block (c:Ctxt.t) (rt:Ll.ty) (stmts:Ast.block) : stream =
    NOTE: The Gid of a function is just its source name
 *)
 let cmp_function_ctxt (c:Ctxt.t) (p:Ast.prog) : Ctxt.t =
-    List.fold_left (fun c -> function
-      | Ast.Gfdecl { elt={ frtyp; fname; args } } ->
-         let ft = TRef (RFun (List.map fst args, frtyp)) in
-         Ctxt.add c fname (cmp_ty ft, Gid fname)
-      | _ -> c
-    ) c p
+  List.fold_left (fun c -> function
+    | Ast.Gfdecl { elt={ frtyp; fname; args } } ->
+      let ft = TRef (RFun (List.map fst args, frtyp)) in
+      Ctxt.add c fname (cmp_ty ft, Gid fname)
+    | _ -> c
+  ) c p
 
 (* Populate a context with bindings for global variables
    mapping OAT identifiers to LLVMlite gids and their types.
@@ -221,7 +276,7 @@ let cmp_function_ctxt (c:Ctxt.t) (p:Ast.prog) : Ctxt.t =
    in well-formed programs. (The constructors starting with C).
 *)
 let cmp_global_ctxt (c:Ctxt.t) (p:Ast.prog) : Ctxt.t =
-    failwith "cmp_global_ctxt unimplemented"
+  [] (* TODO: Wholly unimplemented for now; just tryna get it to compile very basic things *)
 
 (* Compile a function declaration in global context c. Return the LLVMlite cfg
    and a list of global declarations containing the string literals appearing
@@ -235,7 +290,22 @@ let cmp_global_ctxt (c:Ctxt.t) (p:Ast.prog) : Ctxt.t =
    4. Use cfg_of_stream to produce a LLVMlite cfg from
  *)
 let cmp_fdecl (c:Ctxt.t) (f:Ast.fdecl node) : Ll.fdecl * (Ll.gid * Ll.gdecl) list =
-  failwith "cmp_fdecl not implemented"
+  let elt = f.elt in
+  let ret_typ = cmp_ret_ty elt.frtyp in
+  let fun_block = elt.body in
+  let fun_args = elt.args in
+  let ids = List.map snd fun_args in (* TODO: Convert to valid one-time-use LLVM ids *)
+  let statement = (List.hd fun_block) in
+  let cfg = cfg_of_stream (cmp_block c ret_typ elt.body) in
+
+  let blocc = { insns = [("x", Binop (Add, I64, Const 1L, Const 2L))];
+                term = ("y", Ret (I64, Some (Const 17L)))} in
+  let fun_name = "this_is_hardcoded" (*fst (List.hd c))*) in
+  let fun_decl = {f_ty = ([], I64); f_param = []; f_cfg = fst cfg } in
+  let g_id = fun_name in
+  let g_decl = I64, GInt 4L in
+
+  (fun_decl, snd cfg)
 
 (* Compile a global initializer, returning the resulting LLVMlite global
    declaration, and a list of additional global declarations.
@@ -252,7 +322,7 @@ let rec cmp_gexp c (e:Ast.exp node) : Ll.gdecl * (Ll.gid * Ll.gdecl) list =
 
 (* Oat internals function context ------------------------------------------- *)
 let internals = [
-    "oat_alloc_array",         Ll.Fun ([I64], Ptr I64)
+  "oat_alloc_array",         Ll.Fun ([I64], Ptr I64)
   ]
 
 (* Oat builtin function context --------------------------------------------- *)
@@ -281,13 +351,13 @@ let cmp_prog (p:Ast.prog) : Ll.prog =
   (* compile functions and global variables *)
   let fdecls, gdecls =
     List.fold_right (fun d (fs, gs) ->
-        match d with
-        | Ast.Gvdecl { elt=gd } ->
-           let ll_gd, gs' = cmp_gexp c gd.init in
-           (fs, (gd.name, ll_gd)::gs' @ gs)
-        | Ast.Gfdecl fd ->
-           let fdecl, gs' = cmp_fdecl c fd in
-           (fd.elt.fname,fdecl)::fs, gs' @ gs
+      match d with
+      | Ast.Gvdecl { elt=gd } ->
+        let ll_gd, gs' = cmp_gexp c gd.init in
+        (fs, (gd.name, ll_gd)::gs' @ gs)
+      | Ast.Gfdecl fd ->
+        let fdecl, gs' = cmp_fdecl c fd in
+        (fd.elt.fname,fdecl)::fs, gs' @ gs
       ) p ([], []) in
 
   (* gather external declarations *)

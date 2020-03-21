@@ -267,7 +267,16 @@ let rec cmp_stmt (c:Ctxt.t) (rt:Ll.ty) (stmt:Ast.stmt node) : Ctxt.t * stream =
     let (ty2, op2, s) = cmp_exp c n2 in
     (* TODO: check if ty1 and ty2 are the same type *)
     c, [I (uid, Store(ty1, op2, Id uid))] @ s
-  | While (e, lst) -> failwith "While unimplemented"
+  | While (e, lst) ->
+    let (ty, op, s) = cmp_exp c e in
+    let label = gensym ("lbl") in
+    let start_label = label ^ "_start" in
+    let loop_label = label ^ "_then" in
+    let end_label = label ^ "_end" in
+    let block = (cmp_block c Void lst) in
+    let entry_br = [T (Br start_label)] in
+    let cbr = [T (Cbr (op, loop_label, end_label))] in
+    c, [L end_label] @ entry_br @ block @ [L loop_label] @ cbr @ s @ [L start_label] @ entry_br
   | _ -> failwith "cmp_stmt: Unimplemented"
 
 (* Compile a series of statements *)

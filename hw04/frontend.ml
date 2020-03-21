@@ -235,7 +235,23 @@ let cmp_global_ctxt (c:Ctxt.t) (p:Ast.prog) : Ctxt.t =
    4. Use cfg_of_stream to produce a LLVMlite cfg from
  *)
 let cmp_fdecl (c:Ctxt.t) (f:Ast.fdecl node) : Ll.fdecl * (Ll.gid * Ll.gdecl) list =
-  failwith "cmp_fdecl not implemented"
+  let elt = f.elt in
+  let ret_typ = cmp_ret_ty elt.frtyp in
+  let fun_block = elt.body in
+  let fun_args = elt.args in
+  let ids = List.map snd fun_args in (* TODO: Convert to valid one-time-use LLVM ids *)
+  let statement = (List.hd fun_block) in
+  let cfg = cfg_of_stream (cmp_block c ret_typ elt.body) in
+
+  let blocc = { insns = [("x", Binop (Add, I64, Const 1L, Const 2L))];
+                term = ("y", Ret (I64, Some (Const 17L)))} in
+  let fun_name = fst (List.hd c) in
+  let fun_decl = {f_ty = ([], I64); f_param = ids; f_cfg = (fst cfg) } in
+  let g_id = fun_name in
+  let g_decl = I64, GInt 4L in
+  
+  (fun_decl, snd cfg)
+  (* failwith "cmp_fdecl not implemented" *)
 
 (* Compile a global initializer, returning the resulting LLVMlite global
    declaration, and a list of additional global declarations.

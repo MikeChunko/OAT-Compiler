@@ -300,13 +300,12 @@ let cmp_fdecl (c:Ctxt.t) (f:Ast.fdecl node) : Ll.fdecl * (Ll.gid * Ll.gdecl) lis
 
   let blocc = { insns = [("x", Binop (Add, I64, Const 1L, Const 2L))];
                 term = ("y", Ret (I64, Some (Const 17L)))} in
-  let fun_name = fst (List.hd c) in
-  let fun_decl = {f_ty = ([], I64); f_param = ids; f_cfg = (fst cfg) } in
+  let fun_name = "this_is_hardcoded" (*fst (List.hd c))*) in
+  let fun_decl = {f_ty = ([], I64); f_param = []; f_cfg = fst cfg } in
   let g_id = fun_name in
   let g_decl = I64, GInt 4L in
-  
+
   (fun_decl, snd cfg)
-  (* failwith "cmp_fdecl not implemented" *)
 
 (* Compile a global initializer, returning the resulting LLVMlite global
    declaration, and a list of additional global declarations.

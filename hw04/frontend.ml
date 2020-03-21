@@ -264,9 +264,10 @@ let rec cmp_stmt (c:Ctxt.t) (rt:Ll.ty) (stmt:Ast.stmt node) : Ctxt.t * stream =
       | Id uid -> uid
       | _ -> failwith "Assn: Invalid input"
       in
-    let (ty2, op2, _) = cmp_exp c n2 in
+    let (ty2, op2, s) = cmp_exp c n2 in
     (* TODO: check if ty1 and ty2 are the same type *)
-    c, [I (uid, Store(ty1, op2, Id uid))]
+    c, [I (uid, Store(ty1, op2, Id uid))] @ s
+  | While (e, lst) -> failwith "While unimplemented"
   | _ -> failwith "cmp_stmt: Unimplemented"
 
 (* Compile a series of statements *)

@@ -247,6 +247,17 @@ let rec cmp_stmt (c:Ctxt.t) (rt:Ll.ty) (stmt:Ast.stmt node) : Ctxt.t * stream =
     let (ty, op, s) = cmp_exp c e in
     let strm = s @ [T (Ret (ty, Some (op)))] in
     c, strm
+  | Decl v ->
+    let e = (snd v) in
+    let (ty, op, s) = cmp_exp c e in
+    let uid = gensym (fst v) in
+    Ctxt.add c (fst v) (ty, op), List.rev
+    [I (uid, Alloca ty);
+     I (uid, Store (ty, op, Id uid))] @ s
+  | Assn (n1, n2) -> 
+    let (ty1, op1, s1) = cmp_exp c n1 in
+    let (ty2, op2, s2) = cmp_exp c n2 in
+    failwith "poops"
   | _ -> failwith "cmp_stmt: Unimplemented"
 
 (* Compile a series of statements *)

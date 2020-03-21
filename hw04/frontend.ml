@@ -247,14 +247,18 @@ let rec cmp_exp (c:Ctxt.t) (exp:Ast.exp node) : Ll.ty * Ll.operand * stream =
 let rec cmp_stmt (c:Ctxt.t) (rt:Ll.ty) (stmt:Ast.stmt node) : Ctxt.t * stream =
   match stmt.elt with
   | Ret (Some e) ->
-    let (ty, op, s) = cmp_exp c e in
-    let strm = s @ [T (Ret (ty, Some (op)))] in
+      let (ty, op, s) = cmp_exp c e in
+      let (ty', op', s') = match ty with
+      | Ptr t -> let uid = gensym "ret" in
+        t, Ll.Id uid, [I (uid, Load (ty, op))]
+      | _     -> ty, op, [] in
+    let strm = s @ s' @ [T (Ret (ty', Some (op')))] in
     c, strm
   | Decl v ->
     let e = (snd v) in
     let (ty, op, s) = cmp_exp c e in
     let uid = gensym (fst v) in
-    let new_ctxt = Ctxt.add c (fst v) (ty, Id uid) in
+    let new_ctxt = Ctxt.add c (fst v) (Ptr ty, Id uid) in
     new_ctxt, List.rev
     [I (uid, Alloca ty);
      I (uid, Store (ty, op, Id uid))] @ s

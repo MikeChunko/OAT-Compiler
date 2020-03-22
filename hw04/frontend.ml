@@ -225,10 +225,10 @@ let rec cmp_exp (c:Ctxt.t) (exp:Ast.exp node) : Ll.ty * Ll.operand * stream =
   | Index (src,i) -> failwith "cmp_exp: unimplemented Index"
   | Call (e,es)   -> failwith "cmp_exp: unimplemented Call"
   | Bop (b,e1,e2) -> let newid = gensym "bop" in
-    let ((ty1, op1, s1), (ty2, op2, s2)) = cmp_op c (cmp_exp c e1), cmp_op c (cmp_exp c e2) in
     let (t1, t2, t3) = typ_of_binop b in
+    let ((ty1, op1, s1), (ty2, op2, s2)) = cmp_op c (cmp_exp c e1), cmp_op c (cmp_exp c e2) in
     type_check [t1; t2] [ty1; ty2];
-    t3, Id newid, s2 >@ s1 >:: I (newid, cmp_binop b t3 op1 op2)
+    t3, Id newid, s2 >@ s1 >:: I (newid, cmp_binop b t1 op1 op2)
   | Uop (u,e)     -> let newid = gensym "uop" in
     let ty1, op, s = cmp_op c (cmp_exp c e) in
     let (t1, t2) = typ_of_unop u in

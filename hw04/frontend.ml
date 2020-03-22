@@ -267,20 +267,32 @@ let rec cmp_exp (c:Ctxt.t) (exp:Ast.exp node) : Ll.ty * Ll.operand * stream =
   | For of Ast.vdecl list * Ast.exp Ast.node option *
       Ast.stmt Ast.node option * Ast.stmt Ast.node list
   | While of Ast.exp Ast.node * Ast.stmt Ast.node list*)
+  
 let rec cmp_stmt (c:Ctxt.t) (rt:Ll.ty) (stmt:Ast.stmt node) : Ctxt.t * stream =
-  match stmt.elt with
-  | Ret (Some e) ->
-    let (ty, op, s) = cmp_op c (cmp_exp c e) in
-    c, s >:: T (Ret (ty, Some op))
-  | Ret None -> failwith "cmp_stmt: Ret none unimplemented"
-  | Decl v ->
+  let cmp_decl c v =
     let e = (snd v) in
     let (ty, op, s) = cmp_exp c e in
     let uid = gensym (fst v) in
     let new_ctxt = Ctxt.add c (fst v) (Ptr ty, Id uid) in
     new_ctxt, List.rev
     [I (uid, Alloca ty);
-     I (uid, Store (ty, op, Id uid))] @ s
+     I (uid, Store (ty, op, Id uid))] @ s in
+  let cmp_while c (e, lst) = 
+    let (ty, op, s) = cmp_exp c e in
+      let label = gensym ("lbl") in
+        let start_label = label ^ "_start" in
+        let loop_label = label ^ "_then" in
+        let end_label = label ^ "_end" in
+      let block = (cmp_block c Void lst) in
+      let entry_br = [T (Br start_label)] in
+      let cbr = [T (Cbr (op, loop_label, end_label))] in
+      c, [L end_label] @ entry_br @ block @ [L loop_label] @ cbr @ s @ [L start_label] @ entry_br in
+  match stmt.elt with
+  | Ret (Some e) ->
+    let (ty, op, s) = cmp_op c (cmp_exp c e) in
+    c, s >:: T (Ret (ty, Some op))
+  | Ret None -> failwith "cmp_stmt: Ret none unimplemented"
+  | Decl v -> cmp_decl c v
   | Assn (n1, n2) ->
     let (ty1, op1, _) = cmp_exp c n1 in
     let uid = match op1 with
@@ -289,16 +301,7 @@ let rec cmp_stmt (c:Ctxt.t) (rt:Ll.ty) (stmt:Ast.stmt node) : Ctxt.t * stream =
     let (ty2, op2, s) = cmp_exp c n2 in
     type_check [ty1] [Ptr ty2]; (* Checks that ty1 is a pointer of ty2 *)
     c, [I (uid, Store(ty2, op2, Id uid))] @ s
-  | While (e, lst) ->
-    let (ty, op, s) = cmp_exp c e in
-    let label = gensym ("lbl") in
-      let start_label = label ^ "_start" in
-      let loop_label = label ^ "_then" in
-      let end_label = label ^ "_end" in
-    let block = (cmp_block c Void lst) in
-    let entry_br = [T (Br start_label)] in
-    let cbr = [T (Cbr (op, loop_label, end_label))] in
-    c, [L end_label] @ entry_br @ block @ [L loop_label] @ cbr @ s @ [L start_label] @ entry_br
+  | While (e, lst) -> cmp_while c (e,lst)
   | SCall (e, lst) -> failwith "cmp_stmt: SCall unimplemented"
   | If (e, then_lst, else_lst) ->
     let (ty, op, s) = cmp_op c (cmp_exp c e) in
@@ -314,7 +317,24 @@ let rec cmp_stmt (c:Ctxt.t) (rt:Ll.ty) (stmt:Ast.stmt node) : Ctxt.t * stream =
     else (* Avoids compiling an empty else block if there's no else *)
       let cbr = [T (Cbr (op, then_label, exit_label))] in
       c, [L exit_label] @ [T (Br exit_label)] @ then_block @ [L then_label] @ cbr @ s
-  | For (vlst, e, s, slst) -> failwith "cmp_stmt: For unimplemented"
+  | For (vlst, e, s, slst) ->
+    let rec cmp_decl_lst c lst =
+      match lst with
+      | h::tl -> 
+        let (c', decl_lst) = cmp_decl c h in
+        c', (snd @@ cmp_decl_lst c' tl) @ decl_lst
+      | [] -> c, []
+    in
+    let (c', decl_list) = cmp_decl_lst c vlst in
+    let cond = match e with
+    | Some e' -> e'
+    | None -> {elt = CBool true; loc = "",(0,0),(0,0) }
+    in
+    let s' = match s with
+    | Some incr -> incr::slst
+    | None -> slst
+    in
+    c, (snd @@ cmp_while c' (cond, s')) @ decl_list
 
 (* Compile a series of statements *)
 and cmp_block (c:Ctxt.t) (rt:Ll.ty) (stmts:Ast.block) : stream =

@@ -40,7 +40,7 @@ let cfg_of_stream (code:stream) : Ll.cfg * (Ll.gid * Ll.gdecl) list  =
           else failwith @@ Printf.sprintf "build_cfg: block labeled %s has\
                                             no terminator" l
         | Some term ->
-          (gs, einsns, insns, None, (l, {insns; term})::blks) (* Had to change this too *)
+          (gs, einsns, [], None, (l, {insns; term})::blks) (* Had to change this too *)
         end
       | T t  -> (gs, einsns, insns, Some (Llutil.Parsing.gensym "tmn", t), blks) (* Had to change this *)
       | I (uid,insn)  -> (gs, einsns, (uid,insn)::insns, term_opt, blks)
@@ -287,20 +287,28 @@ let rec cmp_stmt (c:Ctxt.t) (rt:Ll.ty) (stmt:Ast.stmt node) : Ctxt.t * stream =
       | Id uid -> uid
       | _ -> failwith "Assn: Invalid input" in
     let (ty2, op2, s) = cmp_exp c n2 in
-    type_check [ty1] [ty2];
-    c, [I (uid, Store(ty1, op2, Id uid))] @ s
+    type_check [ty1] [Ptr ty2]; (* Checks that ty1 is a pointer of ty2 *)
+    c, [I (uid, Store(ty2, op2, Id uid))] @ s
   | While (e, lst) ->
     let (ty, op, s) = cmp_exp c e in
     let label = gensym ("lbl") in
-    let start_label = label ^ "_start" in
-    let loop_label = label ^ "_then" in
-    let end_label = label ^ "_end" in
+      let start_label = label ^ "_start" in
+      let loop_label = label ^ "_then" in
+      let end_label = label ^ "_end" in
     let block = (cmp_block c Void lst) in
     let entry_br = [T (Br start_label)] in
     let cbr = [T (Cbr (op, loop_label, end_label))] in
     c, [L end_label] @ entry_br @ block @ [L loop_label] @ cbr @ s @ [L start_label] @ entry_br
   | SCall (e, lst) -> failwith "cmp_stmt: SCall unimplemented"
-  | If (e, thenlst, elselst) -> failwith "cmp_stmt: If unimplemented"
+  | If (e, then_lst, else_lst) ->
+    let (ty, op, s) = cmp_op c (cmp_exp c e) in
+    let label = gensym ("lbl") in
+      let then_label = label ^ "_then" in
+      let else_label = label ^ "_else" in
+    let then_block = (cmp_block c Void then_lst) in
+    (* let else_block = (cmp_block c Void else_lst) in *)
+    let cbr = [T (Cbr (op, then_label, else_label))] in
+    c, [L else_label] @ [T (Br else_label)] @ then_block @ [L then_label] @ cbr @ s
   | For (vlst, e, s, slst) -> failwith "cmp_stmt: For unimplemented"
 
 (* Compile a series of statements *)

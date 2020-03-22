@@ -205,7 +205,9 @@ let rec cmp_exp (c:Ctxt.t) (exp:Ast.exp node) : Ll.ty * Ll.operand * stream =
     | false -> I1, Const 0L, []
     | true  -> I1, Const 1L, [])
   | CInt i        -> I64, Const i, []
-  | CStr s        -> failwith "cmp_exp: unimplemented CStr"
+  | CStr s        -> let newid = gensym "str" in
+    let len = String.length s + 1 in
+    Ptr (Array (len, I8)), Gid newid, [G (newid, (Array (len, I8), GString s))]
   | CArr (ty,es)  -> failwith "cmp_exp: unimplemented CArr"
   | NewArr (ty,e) -> failwith "cmp_exp: unimplemented NewArr"
   | Id id         ->
@@ -214,9 +216,8 @@ let rec cmp_exp (c:Ctxt.t) (exp:Ast.exp node) : Ll.ty * Ll.operand * stream =
     (ty, op, [])
   | Index (src,i) -> failwith "cmp_exp: unimplemented Index"
   | Call (e,es)   -> failwith "cmp_exp: unimplemented Call"
-  | Bop (b,e1,e2) ->
+  | Bop (b,e1,e2) ->     let newid = gensym "bop" in
     let ((ty1, op1, s1), (ty2, op2, s2)) = cmp_op c (cmp_exp c e1), cmp_op c (cmp_exp c e2) in
-    let newid = gensym "bop" in
     let (t1, t2, t3) = typ_of_binop b in
     if t1 <> ty1 || t2 <> ty2 then failwith "cmp_exp: Invalid types provided"
     else t3, Id newid, s2 >@ s1 >:: I (newid, cmp_binop b t3 op1 op2)

@@ -305,10 +305,15 @@ let rec cmp_stmt (c:Ctxt.t) (rt:Ll.ty) (stmt:Ast.stmt node) : Ctxt.t * stream =
     let label = gensym ("lbl") in
       let then_label = label ^ "_then" in
       let else_label = label ^ "_else" in
+      let exit_label = label ^ "_exit" in
     let then_block = (cmp_block c Void then_lst) in
-    (* let else_block = (cmp_block c Void else_lst) in *)
-    let cbr = [T (Cbr (op, then_label, else_label))] in
-    c, [L else_label] @ [T (Br else_label)] @ then_block @ [L then_label] @ cbr @ s
+    let else_block = (cmp_block c Void else_lst) in
+    if ((List.length else_block) > 0) then
+      let cbr = [T (Cbr (op, then_label, else_label))] in
+      c, [L exit_label] @ [T (Br exit_label)] @ else_block @ [L else_label] @ [T (Br exit_label)] @ then_block @ [L then_label] @ cbr @ s
+    else (* Avoids compiling an empty else block if there's no else *)
+      let cbr = [T (Cbr (op, then_label, exit_label))] in
+      c, [L exit_label] @ [T (Br exit_label)] @ then_block @ [L then_label] @ cbr @ s
   | For (vlst, e, s, slst) -> failwith "cmp_stmt: For unimplemented"
 
 (* Compile a series of statements *)

@@ -140,9 +140,9 @@ let cmp_binop bop ty op1 op2 : insn = let open Ll in
   | Ast.Gt   -> Icmp  (Sgt, ty, op1, op2)
   | Ast.Gte  -> Icmp  (Sge, ty, op1, op2)
 
-let typ_of_unop : Ast.unop -> Ast.ty * Ast.ty = function
-  | Neg | Bitnot -> (TInt, TInt)
-  | Lognot       -> (TBool, TBool)
+let typ_of_unop : Ast.unop -> Ll.ty * Ll.ty = function
+  | Neg | Bitnot -> (I64, I64)
+  | Lognot       -> (I1, I1)
 
 (* Some useful helper functions *)
 
@@ -168,6 +168,14 @@ let oat_alloc_array (t:Ast.ty) (size:Ll.operand) : Ll.ty * operand * stream =
   ans_ty, Id ans_id, lift
     [ arr_id, Call(arr_ty, Gid "oat_alloc_array", [I64, size])
     ; ans_id, Bitcast(arr_ty, Id arr_id, ans_ty) ]
+
+let rec type_check (lst1:Ll.ty list) (lst2:Ll.ty list) : unit =
+  match lst1, lst2 with
+  | x::tl1,y::tl2 ->
+    if x <> y then failwith "Invalid types provided"
+    else type_check tl1 tl2
+  | [],[]         -> ()
+  | _             -> failwith "type_check: Type lists are different sizes"
 
 (* Wrapper for cmp_exp to resolve pointers *)
 let cmp_op (c:Ctxt.t) ((ty:Ll.ty), (op:Ll.operand), (s:stream)) : Ll.ty * Ll.operand * stream =
@@ -216,13 +224,19 @@ let rec cmp_exp (c:Ctxt.t) (exp:Ast.exp node) : Ll.ty * Ll.operand * stream =
     (ty, op, [])
   | Index (src,i) -> failwith "cmp_exp: unimplemented Index"
   | Call (e,es)   -> failwith "cmp_exp: unimplemented Call"
-  | Bop (b,e1,e2) ->     let newid = gensym "bop" in
+  | Bop (b,e1,e2) -> let newid = gensym "bop" in
     let ((ty1, op1, s1), (ty2, op2, s2)) = cmp_op c (cmp_exp c e1), cmp_op c (cmp_exp c e2) in
     let (t1, t2, t3) = typ_of_binop b in
-    if t1 <> ty1 || t2 <> ty2 then failwith "cmp_exp: Invalid types provided"
-    else t3, Id newid, s2 >@ s1 >:: I (newid, cmp_binop b t3 op1 op2)
-    (*failwith "cmp_exp: unimplemented Bop"*)
-  | Uop (u,e)     -> failwith "cmp_exp: unimplemented Uop"
+    type_check [t1; t2] [ty1; ty2];
+    t3, Id newid, s2 >@ s1 >:: I (newid, cmp_binop b t3 op1 op2)
+  | Uop (u,e)     -> let newid = gensym "uop" in
+    let ty1, op, s = cmp_op c (cmp_exp c e) in
+    let (t1, t2) = typ_of_unop u in
+    type_check [t1] [ty1];
+    t2, Id newid, s >:: match u with
+      | Neg    -> I (newid, Binop (Sub, I64, Const 0L, op))
+      | Bitnot -> I (newid, Binop (Xor, I64, op, Const (-1L)))
+      | Lognot -> I (newid, Icmp (Eq, I1, op, Const 0L))
 
 (* Compile a statement in context c with return typ rt. Return a new context,
    possibly extended with new local bindings, and the instruction stream
@@ -269,11 +283,11 @@ let rec cmp_stmt (c:Ctxt.t) (rt:Ll.ty) (stmt:Ast.stmt node) : Ctxt.t * stream =
      I (uid, Store (ty, op, Id uid))] @ s
   | Assn (n1, n2) ->
     let (ty1, op1, _) = cmp_exp c n1 in
-      let uid = match op1 with
+    let uid = match op1 with
       | Id uid -> uid
       | _ -> failwith "Assn: Invalid input" in
     let (ty2, op2, s) = cmp_exp c n2 in
-    (* TODO: check if ty1 and ty2 are the same type *) (*too lazy to implement it but copy the code from cmp_exp binop*)
+    type_check [ty1] [ty2];
     c, [I (uid, Store(ty1, op2, Id uid))] @ s
   | While (e, lst) ->
     let (ty, op, s) = cmp_exp c e in

@@ -200,8 +200,10 @@ let cmp_op (c:Ctxt.t) ((ty:Ll.ty), (op:Ll.operand), (s:stream)) : Ll.ty * Ll.ope
       type stream = elt list*)
 let rec cmp_exp (c:Ctxt.t) (exp:Ast.exp node) : Ll.ty * Ll.operand * stream =
   match exp.elt with
-  | CNull ty      -> failwith "cmp_exp: unimplemented CNull"
-  | CBool b       -> failwith "cmp_exp: unimplemented CBool"
+  | CNull ty      -> cmp_ty ty, Null, []
+  | CBool b       -> (match b with
+    | false -> I1, Const 0L, []
+    | true  -> I1, Const 1L, [])
   | CInt i        -> I64, Const i, []
   | CStr s        -> failwith "cmp_exp: unimplemented CStr"
   | CArr (ty,es)  -> failwith "cmp_exp: unimplemented CArr"
@@ -255,6 +257,7 @@ let rec cmp_stmt (c:Ctxt.t) (rt:Ll.ty) (stmt:Ast.stmt node) : Ctxt.t * stream =
   | Ret (Some e) ->
     let (ty, op, s) = cmp_op c (cmp_exp c e) in
     c, s >:: T (Ret (ty, Some op))
+  | Ret None -> failwith "cmp_stmt: Ret none unimplemented"
   | Decl v ->
     let e = (snd v) in
     let (ty, op, s) = cmp_exp c e in
@@ -281,7 +284,9 @@ let rec cmp_stmt (c:Ctxt.t) (rt:Ll.ty) (stmt:Ast.stmt node) : Ctxt.t * stream =
     let entry_br = [T (Br start_label)] in
     let cbr = [T (Cbr (op, loop_label, end_label))] in
     c, [L end_label] @ entry_br @ block @ [L loop_label] @ cbr @ s @ [L start_label] @ entry_br
-  | _ -> failwith "cmp_stmt: Unimplemented"
+  | SCall (e, lst) -> failwith "cmp_stmt: SCall unimplemented"
+  | If (e, thenlst, elselst) -> failwith "cmp_stmt: If unimplemented"
+  | For (vlst, e, s, slst) -> failwith "cmp_stmt: For unimplemented"
 
 (* Compile a series of statements *)
 and cmp_block (c:Ctxt.t) (rt:Ll.ty) (stmts:Ast.block) : stream =

@@ -44,7 +44,7 @@ let cfg_of_stream (code:stream) : Ll.cfg * (Ll.gid * Ll.gdecl) list  =
         end
       | T t  -> (gs, einsns, insns, Some (Llutil.Parsing.gensym "tmn", t), blks) (* Had to change this *)
       | I (uid,insn)  -> (gs, einsns, (uid,insn)::insns, term_opt, blks)
-      | G (gid,gdecl) ->  ((gid,gdecl)::gs, einsns, insns, term_opt, blks)
+      | G (gid,gdecl) -> ((gid,gdecl)::gs, einsns, insns, term_opt, blks)
       | E (uid,i) -> (gs, (uid, i)::einsns, insns, term_opt, blks)
     ) ([], [], [], None, []) code in
   match term_opt with
@@ -169,6 +169,13 @@ let oat_alloc_array (t:Ast.ty) (size:Ll.operand) : Ll.ty * operand * stream =
     [ arr_id, Call(arr_ty, Gid "oat_alloc_array", [I64, size])
     ; ans_id, Bitcast(arr_ty, Id arr_id, ans_ty) ]
 
+(* Wrapper for cmp_exp to resolve pointers *)
+let cmp_op (c:Ctxt.t) ((ty:Ll.ty), (op:Ll.operand), (s:stream)) : Ll.ty * Ll.operand * stream =
+  match ty with
+  | Ptr t -> let uid = gensym "ptr" in
+    t, Ll.Id uid, I (uid, Load (ty, op))::s
+  | _     -> ty, op, s
+
 (* Compiles an expression exp in context c, outputting the Ll operand that will
    recieve the value of the expression, and the stream of instructions
    implementing the expression.
@@ -200,18 +207,17 @@ let rec cmp_exp (c:Ctxt.t) (exp:Ast.exp node) : Ll.ty * Ll.operand * stream =
   | CArr (ty,es)  -> failwith "cmp_exp: unimplemented CArr"
   | NewArr (ty,e) -> failwith "cmp_exp: unimplemented NewArr"
   | Id id         ->
-    print_string @@ "Looking up " ^ id ^ " in context\n";
+    (*print_string @@ "Looking up " ^ id ^ " in context\n";*)
     let (ty, op) = Ctxt.lookup id c in
     (ty, op, [])
   | Index (src,i) -> failwith "cmp_exp: unimplemented Index"
   | Call (e,es)   -> failwith "cmp_exp: unimplemented Call"
-  | Bop (b,e1,e2) -> 
-    let (ty1, op1, s1) = cmp_exp c e1 in 
-    let (ty2, op2, s2) = cmp_exp c e2 in 
+  | Bop (b,e1,e2) ->
+    let ((ty1, op1, s1), (ty2, op2, s2)) = cmp_op c (cmp_exp c e1), cmp_op c (cmp_exp c e2) in
     let newid = gensym "bop" in
     let (t1, t2, t3) = typ_of_binop b in
     if t1 <> ty1 || t2 <> ty2 then failwith "cmp_exp: Invalid types provided"
-    else (t3, Id newid, s1 @ s2 @ [I (newid, cmp_binop b t3 op1 op2)])
+    else t3, Id newid, s2 >@ s1 >:: I (newid, cmp_binop b t3 op1 op2)
     (*failwith "cmp_exp: unimplemented Bop"*)
   | Uop (u,e)     -> failwith "cmp_exp: unimplemented Uop"
 
@@ -247,13 +253,8 @@ let rec cmp_exp (c:Ctxt.t) (exp:Ast.exp node) : Ll.ty * Ll.operand * stream =
 let rec cmp_stmt (c:Ctxt.t) (rt:Ll.ty) (stmt:Ast.stmt node) : Ctxt.t * stream =
   match stmt.elt with
   | Ret (Some e) ->
-      let (ty, op, s) = cmp_exp c e in
-      let (ty', op', s') = match ty with
-      | Ptr t -> let uid = gensym "ret" in
-        t, Ll.Id uid, [I (uid, Load (ty, op))]
-      | _     -> ty, op, [] in
-    let strm = s @ s' @ [T (Ret (ty', Some (op')))] in
-    c, strm
+    let (ty, op, s) = cmp_op c (cmp_exp c e) in
+    c, s >:: T (Ret (ty, Some op))
   | Decl v ->
     let e = (snd v) in
     let (ty, op, s) = cmp_exp c e in
@@ -262,14 +263,13 @@ let rec cmp_stmt (c:Ctxt.t) (rt:Ll.ty) (stmt:Ast.stmt node) : Ctxt.t * stream =
     new_ctxt, List.rev
     [I (uid, Alloca ty);
      I (uid, Store (ty, op, Id uid))] @ s
-  | Assn (n1, n2) -> 
+  | Assn (n1, n2) ->
     let (ty1, op1, _) = cmp_exp c n1 in
       let uid = match op1 with
       | Id uid -> uid
-      | _ -> failwith "Assn: Invalid input"
-      in
+      | _ -> failwith "Assn: Invalid input" in
     let (ty2, op2, s) = cmp_exp c n2 in
-    (* TODO: check if ty1 and ty2 are the same type *)
+    (* TODO: check if ty1 and ty2 are the same type *) (*too lazy to implement it but copy the code from cmp_exp binop*)
     c, [I (uid, Store(ty1, op2, Id uid))] @ s
   | While (e, lst) ->
     let (ty, op, s) = cmp_exp c e in
@@ -326,18 +326,18 @@ let cmp_global_ctxt (c:Ctxt.t) (p:Ast.prog) : Ctxt.t =
 let cmp_fdecl (c:Ctxt.t) (f:Ast.fdecl node) : Ll.fdecl * (Ll.gid * Ll.gdecl) list =
   let elt = f.elt in
   let ret_typ = cmp_ret_ty elt.frtyp in
-  let fun_block = elt.body in
+  (*let fun_block = elt.body in
   let fun_args = elt.args in
   let ids = List.map snd fun_args in (* TODO: Convert to valid one-time-use LLVM ids *)
-  let statement = (List.hd fun_block) in
+  let statement = (List.hd fun_block) in*)
   let cfg = cfg_of_stream (cmp_block c ret_typ elt.body) in
 
-  let blocc = { insns = [("x", Binop (Add, I64, Const 1L, Const 2L))];
+  (*let blocc = { insns = [("x", Binop (Add, I64, Const 1L, Const 2L))];
                 term = ("y", Ret (I64, Some (Const 17L)))} in
-  let fun_name = "this_is_hardcoded" (*fst (List.hd c))*) in
+  let fun_name = "this_is_hardcoded" (*fst (List.hd c))*) in*)
   let fun_decl = {f_ty = ([], I64); f_param = []; f_cfg = fst cfg } in
-  let g_id = fun_name in
-  let g_decl = I64, GInt 4L in
+  (*let g_id = fun_name in
+  let g_decl = I64, GInt 4L in*)
 
   (fun_decl, snd cfg)
 

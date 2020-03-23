@@ -79,6 +79,10 @@ module Ctxt = struct
   let lookup_function_option (id:Ast.id) (c:t) : (Ll.ty * Ll.operand) option =
     try Some (lookup_function id c) with _ -> None
 
+  let rec print = function
+    | (id, (ty, op))::tl -> print_string ("(" ^ id ^ " [" ^ (string_of_ty ty) ^ ", " ^ (string_of_operand op) ^ "])\n"); print tl
+    | [] -> ()
+
 end
 
 (* compiling OAT types ------------------------------------------------------ *)
@@ -207,6 +211,22 @@ let cmp_op (c:Ctxt.t) ((ty:Ll.ty), (op:Ll.operand), (s:stream)) : Ll.ty * Ll.ope
         | E of uid * Ll.insn      (* hoisted entry block instructions *)
       type stream = elt list*)
 let rec cmp_exp (c:Ctxt.t) (exp:Ast.exp node) : Ll.ty * Ll.operand * stream =
+  let map_cmp_exp (c:Ctxt.t) (exps:Ast.exp node list) : (Ll.ty * Ll.operand) list * stream =
+    let rec map_helper (exps:Ast.exp node list) (lst:(Ll.ty * Ll.operand) list) (ss:stream) =
+      match exps with
+      | e::tl ->
+        let ty, op, s = cmp_exp c e in
+        map_helper tl (lst@[(ty,op)]) (ss@s)
+      | [] -> lst, ss in
+    map_helper exps [] [] in
+  let map_cmp_op (c:Ctxt.t) (lst:(Ll.ty * Ll.operand) list) (s:stream) : (Ll.ty * Ll.operand) list * stream =
+    let rec map_helper (lst:(Ll.ty * Ll.operand) list) (lst':(Ll.ty * Ll.operand) list) (s:stream) =
+      match lst with
+      | (ty,op)::tl ->
+        let ty', op', s' = cmp_op c (ty,op,[]) in
+        map_helper tl  (lst' @ [(ty',op')]) (s >@ s')
+      | [] -> lst', s in
+    map_helper lst [] s in
   match exp.elt with
   | CNull ty      -> cmp_ty ty, Null, []
   | CBool b       -> (match b with
@@ -223,7 +243,16 @@ let rec cmp_exp (c:Ctxt.t) (exp:Ast.exp node) : Ll.ty * Ll.operand * stream =
     let (ty, op) = Ctxt.lookup id c in
     (ty, op, [])
   | Index (src,i) -> failwith "cmp_exp: unimplemented Index"
-  | Call (e,es)   -> failwith "cmp_exp: unimplemented Call"
+  | Call (e,es)   -> let newid = gensym "call" in
+    let ty, op = match e.elt with
+      | Id id -> Ctxt.lookup id c
+      | _     -> failwith "cmp_exp: call: Invalid function name" in
+    let retty = (match ty with
+      | Ptr (Fun (_, ty')) -> ty'
+      | _                  -> failwith "cmp_exp: call: Not a function") in
+    let args, ss = map_cmp_exp c es in
+    let args, ss = map_cmp_op c args ss in
+    retty, Id newid, ss >:: I (newid, Call (retty, op, args))
   | Bop (b,e1,e2) -> let newid = gensym "bop" in
     let (t1, t2, t3) = typ_of_binop b in
     let ((ty1, op1, s1), (ty2, op2, s2)) = cmp_op c (cmp_exp c e1), cmp_op c (cmp_exp c e2) in
@@ -267,7 +296,7 @@ let rec cmp_exp (c:Ctxt.t) (exp:Ast.exp node) : Ll.ty * Ll.operand * stream =
   | For of Ast.vdecl list * Ast.exp Ast.node option *
       Ast.stmt Ast.node option * Ast.stmt Ast.node list
   | While of Ast.exp Ast.node * Ast.stmt Ast.node list*)
-  
+
 let rec cmp_stmt (c:Ctxt.t) (rt:Ll.ty) (stmt:Ast.stmt node) : Ctxt.t * stream =
   let cmp_decl c v =
     let e = (snd v) in
@@ -277,7 +306,7 @@ let rec cmp_stmt (c:Ctxt.t) (rt:Ll.ty) (stmt:Ast.stmt node) : Ctxt.t * stream =
     new_ctxt, List.rev
     [I (uid, Alloca ty);
      I (uid, Store (ty, op, Id uid))] @ s in
-  let cmp_while c (e, lst) = 
+  let cmp_while c (e, lst) =
     let (ty, op, s) = cmp_exp c e in
       let label = gensym ("lbl") in
         let start_label = label ^ "_start" in
@@ -320,7 +349,7 @@ let rec cmp_stmt (c:Ctxt.t) (rt:Ll.ty) (stmt:Ast.stmt node) : Ctxt.t * stream =
   | For (vlst, e, s, slst) ->
     let rec cmp_decl_lst c lst =
       match lst with
-      | h::tl -> 
+      | h::tl ->
         let (c', decl_lst) = cmp_decl c h in
         c', (snd @@ cmp_decl_lst c' tl) @ decl_lst
       | [] -> c, []
@@ -363,7 +392,7 @@ let cmp_function_ctxt (c:Ctxt.t) (p:Ast.prog) : Ctxt.t =
    in well-formed programs. (The constructors starting with C).
 *)
 let cmp_global_ctxt (c:Ctxt.t) (p:Ast.prog) : Ctxt.t =
-  [] (* TODO: Wholly unimplemented for now; just tryna get it to compile very basic things *)
+  c (* TODO: Wholly unimplemented for now; just tryna get it to compile very basic things *)
 
 (* Compile a function declaration in global context c. Return the LLVMlite cfg
    and a list of global declarations containing the string literals appearing
@@ -377,21 +406,18 @@ let cmp_global_ctxt (c:Ctxt.t) (p:Ast.prog) : Ctxt.t =
    4. Use cfg_of_stream to produce a LLVMlite cfg from
  *)
 let cmp_fdecl (c:Ctxt.t) (f:Ast.fdecl node) : Ll.fdecl * (Ll.gid * Ll.gdecl) list =
+  let rec add_args (c:Ctxt.t) (args:(Ast.ty * Ast.id) list) : Ctxt.t =
+    match args with
+    | (ty,id)::tl -> add_args (Ctxt.add c id (cmp_ty ty, Id id)) tl
+    | []          -> c in
   let elt = f.elt in
   let ret_typ = cmp_ret_ty elt.frtyp in
-  (*let fun_block = elt.body in
-  let fun_args = elt.args in
-  let ids = List.map snd fun_args in (* TODO: Convert to valid one-time-use LLVM ids *)
-  let statement = (List.hd fun_block) in*)
+  let args = elt.args in
+  let c = add_args c args in
   let cfg = cfg_of_stream (cmp_block c ret_typ elt.body) in
-
-  (*let blocc = { insns = [("x", Binop (Add, I64, Const 1L, Const 2L))];
-                term = ("y", Ret (I64, Some (Const 17L)))} in
-  let fun_name = "this_is_hardcoded" (*fst (List.hd c))*) in*)
-  let fun_decl = {f_ty = ([], I64); f_param = []; f_cfg = fst cfg } in
-  (*let g_id = fun_name in
-  let g_decl = I64, GInt 4L in*)
-
+  let arg_ids = List.map snd args in
+  let arg_tys = (List.map cmp_ty (List.map fst args)) in
+  let fun_decl = {f_ty = (arg_tys, cmp_ret_ty elt.frtyp); f_param = arg_ids; f_cfg = fst cfg } in
   (fun_decl, snd cfg)
 
 (* Compile a global initializer, returning the resulting LLVMlite global
@@ -405,7 +431,7 @@ let cmp_fdecl (c:Ctxt.t) (f:Ast.fdecl node) : Ll.fdecl * (Ll.gid * Ll.gdecl) lis
      be an array of pointers to arrays emitted as additional global declarations
 *)
 let rec cmp_gexp c (e:Ast.exp node) : Ll.gdecl * (Ll.gid * Ll.gdecl) list =
-  failwith "cmp_init not implemented"
+  failwith "cmp_gexp not implemented"
 
 (* Oat internals function context ------------------------------------------- *)
 let internals = [

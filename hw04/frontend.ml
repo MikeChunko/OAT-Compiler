@@ -299,13 +299,27 @@ let rec cmp_exp (c:Ctxt.t) (exp:Ast.exp node) : Ll.ty * Ll.operand * stream =
 
 let rec cmp_stmt (c:Ctxt.t) (rt:Ll.ty) (stmt:Ast.stmt node) : Ctxt.t * stream =
   let cmp_decl c v =
+    let unwrap_ptr = function
+    | Ptr t -> t
+    | _ -> failwith "No pointer to unwrap"
+    in
+
     let e = (snd v) in
     let (ty, op, s) = cmp_exp c e in
+    let is_global = match e.elt with
+    | Id s -> begin match snd @@ Ctxt.lookup s c with
+        | Gid _ -> true
+        | _ -> false
+        end
+    | _ -> false
+    in
+    let ty' = if (is_global) then unwrap_ptr ty else ty in
     let uid = gensym (fst v) in
-    let new_ctxt = Ctxt.add c (fst v) (Ptr ty, Id uid) in
+    let new_ctxt = Ctxt.add c (fst v) (Ptr ty', Id uid) in
     new_ctxt, List.rev
-    [I (uid, Alloca ty);
-     I (uid, Store (ty, op, Id uid))] @ s in
+    [I (uid, Alloca ty');
+     I (uid, Store (ty', op, Id uid))] @ s in
+
   let cmp_while c (e, lst) =
     let (ty, op, s) = cmp_exp c e in
       let label = gensym ("lbl") in
@@ -323,9 +337,10 @@ let rec cmp_stmt (c:Ctxt.t) (rt:Ll.ty) (stmt:Ast.stmt node) : Ctxt.t * stream =
   | Ret None -> failwith "cmp_stmt: Ret none unimplemented"
   | Decl v -> cmp_decl c v
   | Assn (n1, n2) ->
-    let (ty1, op1, _) = cmp_exp c n1 in
+    let (ty1, op1, _) = cmp_op c (cmp_exp c n1) in
     let uid = match op1 with
       | Id uid -> uid
+      | Gid gid -> failwith "Assn: Gid"
       | _ -> failwith "Assn: Invalid input" in
     let (ty2, op2, s) = cmp_exp c n2 in
     type_check [ty1] [Ptr ty2]; (* Checks that ty1 is a pointer of ty2 *)
@@ -394,10 +409,11 @@ let cmp_function_ctxt (c:Ctxt.t) (p:Ast.prog) : Ctxt.t =
 let cmp_global_ctxt (c:Ctxt.t) (p:Ast.prog) : Ctxt.t =
   List.fold_left (fun c -> function
     | Ast.Gvdecl { elt={ name; init } } ->
-      let ty = (match init.elt with
+      let ty = Ptr (match init.elt with
         | CNull ty      -> cmp_ty ty
         | CBool _       -> I1
         | CInt _        -> I64
+        | CStr s -> Array (String.length s + 1, I8)
         | _ -> failwith "Unimplemented global type") in
       Ctxt.add c name (ty, Gid name)
     | _ -> c
@@ -439,8 +455,24 @@ let cmp_fdecl (c:Ctxt.t) (f:Ast.fdecl node) : Ll.fdecl * (Ll.gid * Ll.gdecl) lis
    - OAT arrays are always handled via pointers. A global array of arrays will
      be an array of pointers to arrays emitted as additional global declarations
 *)
-let rec cmp_gexp c (e:Ast.exp node) : Ll.gdecl * (Ll.gid * Ll.gdecl) list =
-  failwith "cmp_gexp not implemented"
+let rec cmp_gexp (c:Ctxt.t) (e:Ast.exp node) : Ll.gdecl * (Ll.gid * Ll.gdecl) list =
+  let (ty', ginit') = match e.elt with
+  | CNull t -> begin match t with
+    | TBool -> I1, GInt 0L
+    | TInt -> I64, GInt 0L
+    | TRef _ -> failwith "cmp_gexp: Null array unimplemented"
+    end
+  | CBool b -> I1, GInt (if (b = true) then 1L else 0L)
+  | CInt i -> I64, GInt i
+  | CStr s -> failwith "cstr"
+  | Id s -> failwith "Id"
+  | Index (n1, n2) -> failwith "Id"
+  | _ -> failwith "cmp_gexp: unimplemented type" in
+  let gdec = I64, GInt 55L in
+  let id = fst @@ List.hd c in
+  let gdec2 = I64, GInt 66L in
+  let lst = (ty', ginit'), [] in
+  lst
 
 (* Oat internals function context ------------------------------------------- *)
 let internals = [

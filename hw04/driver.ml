@@ -149,6 +149,7 @@ let parse_oat_file filename =
   let lexbuf = read_file filename |> 
                Lexing.from_string
   in
+  Lexer.reset_lexbuf filename 0 lexbuf;  (* set the filename *)  
   try
     Parser.prog Lexer.token lexbuf
   with

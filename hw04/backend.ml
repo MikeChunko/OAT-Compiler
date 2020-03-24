@@ -51,7 +51,7 @@ let rbp_offset (offset:int) : X86.operand =
    We call the datastructure that maps each %uid to its stack slot a
    'stack layout'.  A stack layout maps a uid to an X86 operand for
    accessing its contents.  For this compilation strategy, the operand
-   is always an offset from ebp (in bytes) that represents a storage slot in
+   is always an offset from %rbp (in bytes) that represents a storage slot in
    the stack.  
 *)
 
@@ -179,7 +179,7 @@ let compile_call ctxt fop args =
    - Void, i8, and functions have undefined sizes according to LLVMlite.
      Your function should simply return 0 in those cases
 *)
-let rec size_ty tdecls t : int =
+let rec size_ty (tdecls:(tid * ty) list) (t:Ll.ty) : int =
   begin match t with
     | Void | I8 | Fun _ -> 0
     | I1 | I64 | Ptr _ -> 8 (* Target 64-bit only subset of X86 *)
@@ -225,7 +225,7 @@ let index_into tdecls (ts:ty list) (n:int) : int * ty =
       in (4), but relative to the type f the sub-element picked out
       by the path so far
 *)
-let compile_gep ctxt (op : Ll.ty * Ll.operand) (path: Ll.operand list) : ins list =
+let compile_gep (ctxt:ctxt) (op : Ll.ty * Ll.operand) (path: Ll.operand list) : ins list =
   let op_to_rax = compile_operand ctxt (Reg Rax) in
   let rec loop ty path code =
     match (ty, path) with
@@ -261,14 +261,14 @@ let compile_gep ctxt (op : Ll.ty * Ll.operand) (path: Ll.operand list) : ins lis
 
 (* The result of compiling a single LLVM instruction might be many x86
    instructions.  We have not determined the structure of this code
-   for you. Some of the instructions require only a couple assembly
+   for you. Some of the instructions require only a couple of assembly
    instructions, while others require more.  We have suggested that
    you need at least compile_operand, compile_call, and compile_gep
    helpers; you may introduce more as you see fit.
 
    Here are a few notes:
 
-   - Icmp:  the Set instruction may be of use.  Depending on how you
+   - Icmp:  the Setb instruction may be of use.  Depending on how you
      compile Cbr, you may want to ensure that the value produced by
      Icmp is exactly 0 or 1.
 
@@ -280,7 +280,7 @@ let compile_gep ctxt (op : Ll.ty * Ll.operand) (path: Ll.operand list) : ins lis
 
    - Bitcast: does nothing interesting at the assembly level
 *)
-let compile_insn ctxt (uid, i) : X86.ins list =
+let compile_insn (ctxt:ctxt) ((uid:uid), (i:Ll.insn)) : X86.ins list =
   let op_to = compile_operand ctxt in 
   let op_to_rax = op_to (Reg Rax) in (* Move the value of op into rax *)
   let op_to_rcx = op_to (Reg Rcx) in (* Move the value of op into rax *)
@@ -349,6 +349,10 @@ let compile_insn ctxt (uid, i) : X86.ins list =
 
 (* compiling terminators  --------------------------------------------------- *)
 
+(* prefix the function name [fn] to a label to ensure that the X86 labels are 
+   globally unique . *)
+let mk_lbl (fn:string) (l:string) = fn ^ "." ^ l
+
 (* Compile block terminators is not too difficult:
 
    - Ret should properly exit the function: freeing stack space,
@@ -359,30 +363,29 @@ let compile_insn ctxt (uid, i) : X86.ins list =
 
    - Cbr branch should treat its operand as a boolean conditional
 *)
-let compile_terminator ctxt t =
+let compile_terminator (fn:string) (ctxt:ctxt) (t:Ll.terminator) : ins list =
   let epilogue = Asm.([ Movq, [~%Rbp; ~%Rsp]
                      ; Popq, [~%Rbp]
                      ; Retq, []])
   in match t with
     | Ll.Ret (_, None) -> epilogue
     | Ll.Ret (_, Some o) -> (compile_operand ctxt (Reg Rax) o) :: epilogue
-    | Ll.Br l -> Asm.([ Jmp, [~$$l] ])
+    | Ll.Br l -> Asm.([ Jmp, [~$$(mk_lbl fn l)] ])
     | Ll.Cbr (o, l1, l2) -> (compile_operand ctxt (Reg Rax) o)
                          :: Asm.([ Cmpq, [~$0; ~%Rax]
-                                ; J (X86.Neq) , [~$$l1]
-                                ; Jmp, [~$$l2]
+                                ; J (X86.Neq) , [~$$(mk_lbl fn l1)]
+                                ; Jmp, [~$$(mk_lbl fn l2)]
                                 ])
 
 (* compiling blocks --------------------------------------------------------- *)
 
-(* We have left this helper function here for you to complete. *)
-let compile_block ctxt blk : ins list =
+let compile_block (fn:string) (ctxt:ctxt) (blk:Ll.block) : ins list =
   let insns = List.map (compile_insn ctxt) blk.insns |> List.flatten in
-  let term = compile_terminator ctxt (snd blk.term) in
+  let term = compile_terminator fn ctxt (snd blk.term) in
   insns @ term
 
-let compile_lbl_block lbl ctxt blk : elem =
-  Asm.text lbl (compile_block ctxt blk)
+let compile_lbl_block fn lbl ctxt blk : elem =
+  Asm.text (mk_lbl fn lbl) (compile_block fn ctxt blk)
 
 
 
@@ -408,10 +411,10 @@ let arg_loc (n : int) : operand =
    - each function argument should be copied into a stack slot
    - in this (inefficient) compilation strategy, each local id 
      is also stored as a stack slot.
-   - see the discusion about locals 
+   - see the discussion about locals 
 
 *)
-let stack_layout args (block, lbled_blocks) : layout =
+let stack_layout (args : uid list) ((block, lbled_blocks):cfg) : layout =
   let lbled_block_isns = List.map (fun (_, blk) -> blk.insns) lbled_blocks in
   let cfg_uids = List.map fst (block.insns @ (List.flatten lbled_block_isns)) in
   List.mapi (fun i uid -> (uid, rbp_offset (-i - 1))) (args @ cfg_uids)
@@ -432,7 +435,7 @@ let stack_layout args (block, lbled_blocks) : layout =
    - the function entry code should allocate the stack storage needed
      to hold all of the local stack slots.
 *)
-let compile_fdecl tdecls name { f_ty; f_param; f_cfg } =
+let compile_fdecl (tdecls:(tid * ty) list) (name:string) ({ f_ty; f_param; f_cfg }:fdecl) : prog =
   let entry_name = (Platform.mangle name) in
   let layout = stack_layout f_param f_cfg in
   let init_arg_code =
@@ -449,21 +452,22 @@ let compile_fdecl tdecls name { f_ty; f_param; f_cfg } =
                    @ init_arg_code
   in
   let (entry, body) = f_cfg in
-  let entry_insns = compile_block ctxt entry in
+  let entry_insns = compile_block name ctxt entry in
   (Asm.gtext entry_name @@ prologue @ entry_insns) ::
-  (List.map (fun (lbl, blk) -> compile_lbl_block lbl ctxt blk) body)
+  (List.map (fun (lbl, blk) -> compile_lbl_block name lbl ctxt blk) body)
 
 
 (* compile_gdecl ------------------------------------------------------------ *)
 (* Compile a global value into an X86 global data declaration and map
    a global uid to its associated X86 label.
 *)
-let rec compile_ginit = function
+let rec compile_ginit : ginit -> X86.data list = function
   | GNull     -> [Quad (Lit 0L)]
   | GGid gid  -> [Quad (Lbl (Platform.mangle gid))]
   | GInt c    -> [Quad (Lit c)]
   | GString s -> [Asciz s]
   | GArray gs | GStruct gs -> List.map compile_gdecl gs |> List.flatten
+  | GBitcast (t1,g,t2) -> compile_ginit g
 
 and compile_gdecl (_, g) = compile_ginit g
 

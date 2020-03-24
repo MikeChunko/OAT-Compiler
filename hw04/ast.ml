@@ -44,7 +44,7 @@ type binop =
 | Sar
 
 type exp =
-| CNull of ty
+| CNull of rty
 | CBool of bool
 | CInt of int64
 | CStr of string

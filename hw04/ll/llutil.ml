@@ -96,6 +96,7 @@ let rec string_of_ginit : ginit -> string = function
   | GString s   -> pp "c\"%s\\00\"" s
   | GArray gis  -> pp "[ %s ]" (mapcat ", " string_of_gdecl gis)
   | GStruct gis -> pp "{ %s }" (mapcat ", " string_of_gdecl gis)
+  | GBitcast (t1,g,t2) -> pp "bitcast (%s %s to %s)" (sot t1) (string_of_ginit g) (sot t2)
 
 and string_of_gdecl (t,gi:gdecl) : string =
   pp "%s %s" (sot t) (string_of_ginit gi)

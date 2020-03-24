@@ -94,7 +94,7 @@ and print_exp_aux level fmt e =
 
   if this_level < level then pps "(";
   begin match e.elt with
-    | CNull t -> print_ty_aux fmt t; pps "null"
+    | CNull t -> print_rty_aux fmt t; pps "null"
     | CBool v -> pps (if v then "true" else "false")
     | CInt  v -> pps (Int64.to_string v)
     | CStr  v -> pps (Printf.sprintf "%S" v)
@@ -317,7 +317,7 @@ let rec ml_string_of_ty (t:ty) : string =
 and ml_string_of_ret_ty r =
   match r with
   | RetVoid -> "TVoid"
-  | RetVal t -> ml_string_of_ty t
+  | RetVal t -> sp "RetVal (%s)" (ml_string_of_ty t)
 
 
 and ml_string_of_reft (r:rty) : string =
@@ -356,7 +356,7 @@ let ml_string_of_unop : unop -> string = function
 
 let rec ml_string_of_exp_aux (e: exp) : string =
   begin match e with 
-    | CNull t -> sp "CNull %s" (ml_string_of_ty t)
+    | CNull t -> sp "CNull %s" (ml_string_of_reft t)
     | CBool b -> sp "CBool %b" b
     | CInt i -> sp "CInt %LiL" i
     | CStr s -> sp "CStr %S" s
@@ -416,7 +416,7 @@ let ml_string_of_args : (ty * id) list -> string =
     sp "(%s,%s)" (ml_string_of_ty t) (ml_string_of_id i))
 
 let rec ml_string_of_fdecl_aux (f:fdecl) : string =
-  sp "{ frtyp = %s; name = %s; args = %s; body = %s }"
+  sp "{ frtyp = %s; fname = %s; args = %s; body = %s }"
   (ml_string_of_ret_ty f.frtyp) (ml_string_of_id f.fname)
   (ml_string_of_args f.args) (ml_string_of_block f.body)
 
@@ -484,7 +484,7 @@ let eq_binop : binop -> binop -> bool = (=)
 
 let rec eq_exp_aux (e1:exp) (e2:exp) : bool =
   begin match e1, e2 with
-    | CNull t1, CNull t2 -> eq_ty t1 t2
+    | CNull t1, CNull t2 -> eq_rtyp t1 t2
     | CBool b1, CBool b2 -> b1 = b2
     | CInt i1, CInt i2 -> i1 = i2
     | CStr s1, CStr s2 -> s1 = s2

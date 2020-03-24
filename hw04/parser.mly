@@ -141,7 +141,7 @@ ty:
 gexp:
   | i=INT      { loc $startpos $endpos @@ CInt i }
   | s=STRING   { loc $startpos $endpos @@ CStr s}
-  | t=ty NULL  { loc $startpos $endpos @@ CNull t }
+  | t=rtyp NULL  { loc $startpos $endpos @@ CNull t }
   | b=BOOL     { loc $startpos $endpos @@ CBool b }
   | t=ty LBRACKET RBRACKET LBRACE els=separated_list(COMMA, gexp) RBRACE
                         { loc $startpos $endpos @@ CArr (t, els) }
@@ -157,7 +157,7 @@ exp:
   | id=IDENT            { loc $startpos $endpos @@ Id id }
   | i=INT               { loc $startpos $endpos @@ CInt i }
   | s=STRING            { loc $startpos $endpos @@ CStr s}
-  | t=ty NULL           { loc $startpos $endpos @@ CNull t }
+  | t=rtyp NULL           { loc $startpos $endpos @@ CNull t }
   | b=BOOL              { loc $startpos $endpos @@ CBool b }
   | e=exp LBRACKET i=exp RBRACKET
                         { loc $startpos $endpos @@ Index (e, i) }

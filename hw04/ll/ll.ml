@@ -88,6 +88,7 @@ type ginit =
 | GString of string
 | GArray of (ty * ginit) list
 | GStruct of (ty * ginit) list
+| GBitcast of ty * ginit * ty
 
 (* Global Declarations *)
 type gdecl = ty * ginit

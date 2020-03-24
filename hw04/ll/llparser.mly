@@ -294,3 +294,5 @@ ginit:
     { GArray gs }
   | LBRACE gs=gdecl_list RBRACE
     { GStruct gs }
+  | BITCAST LPAREN t1=ty g=ginit TO  t2=ty RPAREN 
+    { GBitcast (t1, g, t2) }

@@ -42,12 +42,13 @@ type config =
 (* Create memory value for global declaration *)
 let mval_of_gdecl (gd:gdecl) : mval =
   let rec mtree_of_gdecl : gdecl -> mtree = function
-    | ty, GNull     -> MWord (VPtr (ty, NullId, [0]))
-    | ty, GGid g    -> MWord (VPtr (ty, GlobId g, [0]))
-    | _, GInt i     -> MWord (VInt i)
-    | _, GString s  -> MStr s
+    | ty, GNull              -> MWord (VPtr (ty, NullId, [0]))
+    | ty, GGid g             -> MWord (VPtr (ty, GlobId g, [0]))
+    | _, GBitcast (t1, v,t2) -> mtree_of_gdecl (t1, v)
+    | _, GInt i              -> MWord (VInt i)
+    | _, GString s           -> MStr s
     | _, GArray gs
-    | _, GStruct gs -> MNode (List.map mtree_of_gdecl gs)
+    | _, GStruct gs          -> MNode (List.map mtree_of_gdecl gs)
   in [mtree_of_gdecl gd]
 
 (* Create fully undefined memory value for a type *)

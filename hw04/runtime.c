@@ -8,7 +8,7 @@
 
 int64_t* oat_alloc_array (int64_t size) {
   assert (size >= 0);
-  int64_t *arr = (int64_t*)malloc(sizeof(int64_t) * (size+1));
+  int64_t *arr = (int64_t*)calloc(size+1, sizeof(int64_t));
   arr[0] = size;
   return arr;
 }

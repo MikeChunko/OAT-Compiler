@@ -228,7 +228,7 @@ let rec cmp_exp (c:Ctxt.t) (exp:Ast.exp node) : Ll.ty * Ll.operand * stream =
       | [] -> lst', s in
     map_helper lst [] s in
   match exp.elt with
-  | CNull ty      -> cmp_ty ty, Null, []
+  | CNull ty      -> cmp_rty ty, Null, []
   | CBool b       -> (match b with
     | false -> I1, Const 0L, []
     | true  -> I1, Const 1L, [])
@@ -237,7 +237,7 @@ let rec cmp_exp (c:Ctxt.t) (exp:Ast.exp node) : Ll.ty * Ll.operand * stream =
     let len = String.length s + 1 in
     Ptr (Array (len, I8)), Gid newid, [G (newid, (Array (len, I8), GString s))]
   | CArr (ty,es)  ->
-    let args, ss = map_cmp_exp c es in 
+    let args, ss = map_cmp_exp c es in
     let args, ss = map_cmp_op c args ss in
     Ptr (Struct [cmp_ty ty; Array (List.length es, I8)]), Const 9L, []
   | NewArr (ty,e) -> failwith "cmp_exp: unimplemented NewArr"
@@ -408,7 +408,7 @@ let cmp_global_ctxt (c:Ctxt.t) (p:Ast.prog) : Ctxt.t =
   List.fold_left (fun c -> function
     | Ast.Gvdecl { elt={ name; init } } ->
       let ty = Ptr (match init.elt with
-        | CNull ty      -> cmp_ty ty
+        | CNull ty      -> cmp_rty ty
         | CBool _       -> I1
         | CInt _        -> I64
         | CStr s -> Array (String.length s + 1, I8)
@@ -463,9 +463,9 @@ let cmp_ginit (e:Ast.exp) : Ll.ginit =
 let rec cmp_gexp (c:Ctxt.t) (e:Ast.exp node) : Ll.gdecl * (Ll.gid * Ll.gdecl) list =
   let (ty', ginit') = match e.elt with
     | CNull t -> (match t with
-      | TBool -> I1, GInt 0L
-      | TInt -> I64, GInt 0L
-      | TRef _ -> failwith "cmp_gexp: Null array unimplemented")
+      | RString         -> failwith "cmp_gexp: Null RString unimplemented"
+      | RArray ty       -> failwith "cmp_gexp: Null RArray unimplemented"
+      | RFun (tys, rty) -> failwith "cmp_gexp: Null RFun unimplemented")
     | CBool b -> I1, GInt (if (b = true) then 1L else 0L)
     | CInt i -> I64, GInt i
     | CStr s -> failwith "CStr"

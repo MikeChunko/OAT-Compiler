@@ -41,10 +41,6 @@ be useful for testing purposes.
     runs the ll file through the reference interpreter
     and outputs the results to the console
 
-  --simulate-x86
-    runs the resulting .s file through the reference 
-    x86 simulator and outputs the result to the console
-
   --execute-x86
     runs the resulting a.out file natively
     (applies to either the 516 backend or clang-compiled code)

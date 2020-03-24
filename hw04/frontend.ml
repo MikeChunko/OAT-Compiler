@@ -236,7 +236,10 @@ let rec cmp_exp (c:Ctxt.t) (exp:Ast.exp node) : Ll.ty * Ll.operand * stream =
   | CStr s        -> let newid = gensym "str" in
     let len = String.length s + 1 in
     Ptr (Array (len, I8)), Gid newid, [G (newid, (Array (len, I8), GString s))]
-  | CArr (ty,es)  -> failwith "cmp_exp: unimplemented CArr"
+  | CArr (ty,es)  ->
+    let args, ss = map_cmp_exp c es in 
+    let args, ss = map_cmp_op c args ss in
+    Ptr (Struct [cmp_ty ty; Array (List.length es, I8)]), Const 9L, []
   | NewArr (ty,e) -> failwith "cmp_exp: unimplemented NewArr"
   | Id id         ->
     (*print_string @@ "Looking up " ^ id ^ " in context\n";*)
@@ -313,6 +316,9 @@ let rec cmp_stmt (c:Ctxt.t) (rt:Ll.ty) (stmt:Ast.stmt node) : Ctxt.t * stream =
       then tynew, [I (globaluid, Load (ty, op))], Ll.Id globaluid
       else ty, [], op in
     let new_ctxt = Ctxt.add c (fst v) (Ptr ty', Id uid) in
+    match ty' with
+    | Ptr (Struct (_::(Array(_,_))::tl)) -> new_ctxt, []>::I (uid, Alloca ty') >::I ("fling", Gep (ty', op, [op]))
+    | _ ->
     new_ctxt, s >:: I (uid, Alloca ty') >@ s' >::I (uid, Store (ty', op', Id uid)) in
 
   let cmp_while c (e, lst) =
@@ -327,7 +333,7 @@ let rec cmp_stmt (c:Ctxt.t) (rt:Ll.ty) (stmt:Ast.stmt node) : Ctxt.t * stream =
     c, [L end_label] @ entry_br @ block @ [L loop_label] @ cbr @ s @ [L start_label] @ entry_br in
   match stmt.elt with
   | Ret (Some e) ->
-    Ctxt.print c;
+    (* Ctxt.print c; *)
     let (ty, op, s) = cmp_op c (cmp_exp c e) in
     c, s >:: T (Ret (ty, Some op))
   | Ret None -> failwith "cmp_stmt: Ret none unimplemented"
@@ -406,6 +412,8 @@ let cmp_global_ctxt (c:Ctxt.t) (p:Ast.prog) : Ctxt.t =
         | CBool _       -> I1
         | CInt _        -> I64
         | CStr s -> Array (String.length s + 1, I8)
+        | CArr (ty, es) -> Array (List.length es + 1, I8)
+        | NewArr _ -> failwith "Unimplemented global NewArr"
         | _ -> failwith "Unimplemented global type") in
       Ctxt.add c name (ty, Gid name)
     | _ -> c
@@ -447,6 +455,11 @@ let cmp_fdecl (c:Ctxt.t) (f:Ast.fdecl node) : Ll.fdecl * (Ll.gid * Ll.gdecl) lis
    - OAT arrays are always handled via pointers. A global array of arrays will
      be an array of pointers to arrays emitted as additional global declarations
 *)
+let cmp_ginit (e:Ast.exp) : Ll.ginit =
+  match e with
+  | CInt i -> GInt i
+  | _ -> failwith "cmp_ginit unimplemented"
+
 let rec cmp_gexp (c:Ctxt.t) (e:Ast.exp node) : Ll.gdecl * (Ll.gid * Ll.gdecl) list =
   let (ty', ginit') = match e.elt with
     | CNull t -> (match t with
@@ -456,6 +469,8 @@ let rec cmp_gexp (c:Ctxt.t) (e:Ast.exp node) : Ll.gdecl * (Ll.gid * Ll.gdecl) li
     | CBool b -> I1, GInt (if (b = true) then 1L else 0L)
     | CInt i -> I64, GInt i
     | CStr s -> failwith "CStr"
+    | CArr (ty, es) -> let params = (List.map (fun i -> cmp_ty ty, cmp_ginit i.elt) es) in
+        Array ((List.length es), cmp_ty ty), GArray params
     | Id s -> failwith "Id"
     | Index (n1, n2) -> failwith "Id"
     | _ -> failwith "cmp_gexp: unimplemented type" in

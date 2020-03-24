@@ -245,7 +245,6 @@ let rec cmp_exp (c:Ctxt.t) (exp:Ast.exp node) : Ll.ty * Ll.operand * stream =
     let (ty, op) = Ctxt.lookup id c in
     (ty, op, [])
   | Index (src,i) -> let newid = gensym "index" in
-    Ctxt.print c;
     let ty1, op1, s1 = cmp_exp c src in
     let ty2, op2, s2 = cmp_exp c i in
     let ty' = (match ty1 with
@@ -339,7 +338,7 @@ let rec cmp_stmt (c:Ctxt.t) (rt:Ll.ty) (stmt:Ast.stmt node) : Ctxt.t * stream =
     c, [L end_label] @ entry_br @ block @ [L loop_label] @ cbr @ s @ [L start_label] @ entry_br in
   match stmt.elt with
   | Ret (Some e) ->
-    (* Ctxt.print c; *)
+    Ctxt.print c;
     let (ty, op, s) = cmp_op c (cmp_exp c e) in
     c, s >:: T (Ret (ty, Some op))
   | Ret None -> failwith "cmp_stmt: Ret none unimplemented"
@@ -414,7 +413,9 @@ let cmp_global_ctxt (c:Ctxt.t) (p:Ast.prog) : Ctxt.t =
   List.fold_left (fun c -> function
     | Ast.Gvdecl { elt={ name; init } } ->
       let ty = Ptr (match init.elt with
-        | CNull ty      -> cmp_rty ty
+        | CNull ty      -> (match ty with
+          | RArray t -> cmp_ty t
+          | _ -> cmp_rty ty)
         | CBool _       -> I1
         | CInt _        -> I64
         | CStr s -> Array (String.length s + 1, I8)
@@ -470,15 +471,15 @@ let rec cmp_gexp (c:Ctxt.t) (e:Ast.exp node) : Ll.gdecl * (Ll.gid * Ll.gdecl) li
   let (ty', ginit') = match e.elt with
     | CNull t -> (match t with
       | RString         -> failwith "cmp_gexp: Null RString unimplemented"
-      | RArray ty       -> failwith "cmp_gexp: Null RArray unimplemented"
+      | RArray ty       -> Array (0, cmp_ty ty), GArray []
       | RFun (tys, rty) -> failwith "cmp_gexp: Null RFun unimplemented")
     | CBool b -> I1, GInt (if (b = true) then 1L else 0L)
     | CInt i -> I64, GInt i
-    | CStr s -> failwith "CStr"
+    | CStr s -> failwith "cmp_gexp: CStr"
     | CArr (ty, es) -> let params = (List.map (fun i -> cmp_ty ty, cmp_ginit i.elt) es) in
         Array ((List.length es), cmp_ty ty), GArray params
-    | Id s -> failwith "Id"
-    | Index (n1, n2) -> failwith "Id"
+    | Id s -> failwith "cmp_gexp Id"
+    | Index (n1, n2) -> failwith "cmp_gexp: Index"
     | _ -> failwith "cmp_gexp: unimplemented type" in
   (ty', ginit'), []
 

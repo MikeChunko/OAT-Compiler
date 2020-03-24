@@ -242,10 +242,16 @@ let rec cmp_exp (c:Ctxt.t) (exp:Ast.exp node) : Ll.ty * Ll.operand * stream =
     Ptr (Struct [cmp_ty ty; Array (List.length es, I8)]), Const 9L, []
   | NewArr (ty,e) -> failwith "cmp_exp: unimplemented NewArr"
   | Id id         ->
-    (*print_string @@ "Looking up " ^ id ^ " in context\n";*)
     let (ty, op) = Ctxt.lookup id c in
     (ty, op, [])
-  | Index (src,i) -> failwith "cmp_exp: unimplemented Index"
+  | Index (src,i) -> let newid = gensym "index" in
+    Ctxt.print c;
+    let ty1, op1, s1 = cmp_exp c src in
+    let ty2, op2, s2 = cmp_exp c i in
+    let ty' = (match ty1 with
+      | Ptr (Array (_,ty')) -> Ptr ty'
+      | _ -> failwith "cmp_exp: Index: Invalid type to index") in
+    ty', Id newid, s2 >@ s1 >:: I (newid, Gep (ty1, op1, [Const 0L; op2]))
   | Call (e,es)   -> let newid = gensym "call" in
     let ty, op = match e.elt with
       | Id id -> Ctxt.lookup id c
@@ -412,7 +418,7 @@ let cmp_global_ctxt (c:Ctxt.t) (p:Ast.prog) : Ctxt.t =
         | CBool _       -> I1
         | CInt _        -> I64
         | CStr s -> Array (String.length s + 1, I8)
-        | CArr (ty, es) -> Array (List.length es + 1, I8)
+        | CArr (ty, es) -> Array (List.length es, cmp_ty ty)
         | NewArr _ -> failwith "Unimplemented global NewArr"
         | _ -> failwith "Unimplemented global type") in
       Ctxt.add c name (ty, Gid name)

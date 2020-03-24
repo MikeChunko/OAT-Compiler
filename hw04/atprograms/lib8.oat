@@ -1,5 +1,0 @@
-int program (int argc, string[] argv) {
-  var str = "Hello world!";
-  print_string (str);
-  return 0;
-}

@@ -1,6 +1,0 @@
-global i = 3;
-
-int program(int argc, string[] argv) {
-  i = 341;
-  return i;
-}

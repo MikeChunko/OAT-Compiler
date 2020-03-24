@@ -299,45 +299,41 @@ let rec cmp_exp (c:Ctxt.t) (exp:Ast.exp node) : Ll.ty * Ll.operand * stream =
 
 let rec cmp_stmt (c:Ctxt.t) (rt:Ll.ty) (stmt:Ast.stmt node) : Ctxt.t * stream =
   let cmp_decl c v =
-    let unwrap_ptr = function
-    | Ptr t -> t
-    | _ -> failwith "No pointer to unwrap"
-    in
-
     let e = (snd v) in
     let (ty, op, s) = cmp_exp c e in
+    let (tynew, _, _) = cmp_op c (ty, op, s) in
     let is_global = match e.elt with
-    | Id s -> begin match snd @@ Ctxt.lookup s c with
+      | Id s -> (match snd @@ Ctxt.lookup s c with
         | Gid _ -> true
-        | _ -> false
-        end
-    | _ -> false
-    in
-    let ty' = if (is_global) then unwrap_ptr ty else ty in
+        | _ -> false)
+      | _ -> false in
     let uid = gensym (fst v) in
+    let globaluid = gensym "decl" in
+    let ty', s', op' = if is_global
+      then tynew, [I (globaluid, Load (ty, op))], Ll.Id globaluid
+      else ty, [], op in
     let new_ctxt = Ctxt.add c (fst v) (Ptr ty', Id uid) in
-    new_ctxt, List.rev
-    [I (uid, Alloca ty');
-     I (uid, Store (ty', op, Id uid))] @ s in
+    new_ctxt, s >:: I (uid, Alloca ty') >@ s' >::I (uid, Store (ty', op', Id uid)) in
 
   let cmp_while c (e, lst) =
     let (ty, op, s) = cmp_exp c e in
-      let label = gensym ("lbl") in
-        let start_label = label ^ "_start" in
-        let loop_label = label ^ "_then" in
-        let end_label = label ^ "_end" in
-      let block = (cmp_block c Void lst) in
-      let entry_br = [T (Br start_label)] in
-      let cbr = [T (Cbr (op, loop_label, end_label))] in
-      c, [L end_label] @ entry_br @ block @ [L loop_label] @ cbr @ s @ [L start_label] @ entry_br in
+    let label = gensym ("lbl") in
+      let start_label = label ^ "_start" in
+      let loop_label = label ^ "_then" in
+      let end_label = label ^ "_end" in
+    let block = (cmp_block c Void lst) in
+    let entry_br = [T (Br start_label)] in
+    let cbr = [T (Cbr (op, loop_label, end_label))] in
+    c, [L end_label] @ entry_br @ block @ [L loop_label] @ cbr @ s @ [L start_label] @ entry_br in
   match stmt.elt with
   | Ret (Some e) ->
+    Ctxt.print c;
     let (ty, op, s) = cmp_op c (cmp_exp c e) in
     c, s >:: T (Ret (ty, Some op))
   | Ret None -> failwith "cmp_stmt: Ret none unimplemented"
   | Decl v -> cmp_decl c v
   | Assn (n1, n2) ->
-    let (ty1, op1, _) = cmp_op c (cmp_exp c n1) in
+    let (ty1, op1, _) = cmp_exp c n1 in
     let uid = match op1 with
       | Id uid -> uid
       | Gid gid -> failwith "Assn: Gid"
@@ -362,22 +358,18 @@ let rec cmp_stmt (c:Ctxt.t) (rt:Ll.ty) (stmt:Ast.stmt node) : Ctxt.t * stream =
       let cbr = [T (Cbr (op, then_label, exit_label))] in
       c, [L exit_label] @ [T (Br exit_label)] @ then_block @ [L then_label] @ cbr @ s
   | For (vlst, e, s, slst) ->
-    let rec cmp_decl_lst c lst =
-      match lst with
+    let rec cmp_decl_lst c = function
       | h::tl ->
         let (c', decl_lst) = cmp_decl c h in
         c', (snd @@ cmp_decl_lst c' tl) @ decl_lst
-      | [] -> c, []
-    in
+      | [] -> c, [] in
     let (c', decl_list) = cmp_decl_lst c vlst in
     let cond = match e with
-    | Some e' -> e'
-    | None -> {elt = CBool true; loc = "",(0,0),(0,0) }
-    in
+      | Some e' -> e'
+      | None -> {elt = CBool true; loc = "",(0,0),(0,0) } in
     let s' = match s with
-    | Some incr -> incr::slst
-    | None -> slst
-    in
+      | Some incr -> incr::slst
+      | None -> slst in
     c, (snd @@ cmp_while c' (cond, s')) @ decl_list
 
 (* Compile a series of statements *)
@@ -457,22 +449,17 @@ let cmp_fdecl (c:Ctxt.t) (f:Ast.fdecl node) : Ll.fdecl * (Ll.gid * Ll.gdecl) lis
 *)
 let rec cmp_gexp (c:Ctxt.t) (e:Ast.exp node) : Ll.gdecl * (Ll.gid * Ll.gdecl) list =
   let (ty', ginit') = match e.elt with
-  | CNull t -> begin match t with
-    | TBool -> I1, GInt 0L
-    | TInt -> I64, GInt 0L
-    | TRef _ -> failwith "cmp_gexp: Null array unimplemented"
-    end
-  | CBool b -> I1, GInt (if (b = true) then 1L else 0L)
-  | CInt i -> I64, GInt i
-  | CStr s -> failwith "cstr"
-  | Id s -> failwith "Id"
-  | Index (n1, n2) -> failwith "Id"
-  | _ -> failwith "cmp_gexp: unimplemented type" in
-  let gdec = I64, GInt 55L in
-  let id = fst @@ List.hd c in
-  let gdec2 = I64, GInt 66L in
-  let lst = (ty', ginit'), [] in
-  lst
+    | CNull t -> (match t with
+      | TBool -> I1, GInt 0L
+      | TInt -> I64, GInt 0L
+      | TRef _ -> failwith "cmp_gexp: Null array unimplemented")
+    | CBool b -> I1, GInt (if (b = true) then 1L else 0L)
+    | CInt i -> I64, GInt i
+    | CStr s -> failwith "CStr"
+    | Id s -> failwith "Id"
+    | Index (n1, n2) -> failwith "Id"
+    | _ -> failwith "cmp_gexp: unimplemented type" in
+  (ty', ginit'), []
 
 (* Oat internals function context ------------------------------------------- *)
 let internals = [

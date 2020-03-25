@@ -246,7 +246,7 @@ let rec cmp_exp (c:Ctxt.t) (exp:Ast.exp node) : Ll.ty * Ll.operand * stream =
         [I (previd, Gep (Ptr newty, Id newid, [Const 0L; Const 1L; Const index]))] >@
         [I (gensym "array_init", Store (ty, op, Id previd))] >@
         array_init tl (Int64.add index 1L)
-      | [] -> ss in
+      | [] -> [] in
     Ptr newty, Id newid, ss >@ (array_init args 0L)
   | NewArr (ty,e) -> failwith "cmp_exp: unimplemented NewArr"
   | Id id         ->

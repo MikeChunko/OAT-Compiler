@@ -239,7 +239,7 @@ let rec cmp_exp (c:Ctxt.t) (exp:Ast.exp node) : Ll.ty * Ll.operand * stream =
   | CArr (ty,es)  -> let newid = gensym "array" in
     let args, ss = map_cmp_exp c es in
     let args, ss = map_cmp_op c args ss in
-    let newty = (Struct [cmp_ty ty; Array (List.length es, cmp_ty ty)]) in
+    let newty = (Struct [I64; Array (List.length es, cmp_ty ty)]) in
     let rec array_init  (args:(Ll.ty * Ll.operand) list) (index:int64) =
       match args with
       | (ty,op)::tl -> let previd = gensym "array_init" in
@@ -424,7 +424,7 @@ let cmp_global_ctxt (c:Ctxt.t) (p:Ast.prog) : Ctxt.t =
     | Ast.Gvdecl { elt={ name; init } } ->
       let ty = Ptr (match init.elt with
         | CNull ty      -> (match ty with
-          | RArray t -> cmp_ty t
+          | RArray t -> Struct [I64; Array (0, cmp_ty t)]
           | _ -> cmp_rty ty)
         | CBool _       -> I1
         | CInt _        -> I64

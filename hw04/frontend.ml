@@ -234,6 +234,7 @@ let rec cmp_exp (c:Ctxt.t) (exp:Ast.exp node) : Ll.ty * Ll.operand * stream =
     | true  -> I1, Const 1L, [])
   | CInt i        -> I64, Const i, []
   | CStr s        -> let newid = gensym "str_" in
+    print_string "\nHELLO2";
     let len = String.length s + 1 in
     Ptr (Array (len, I8)), Gid newid, [G (newid, (Array (len, I8), GString s))]
   | CArr (ty,es)  -> let newid = gensym "array_" in
@@ -319,7 +320,9 @@ let rec cmp_exp (c:Ctxt.t) (exp:Ast.exp node) : Ll.ty * Ll.operand * stream =
 let rec cmp_stmt (c:Ctxt.t) (rt:Ll.ty) (stmt:Ast.stmt node) : Ctxt.t * stream =
   let cmp_decl c v =
     let e = (snd v) in
+    print_string "\nHELLO1";
     let (ty, op, s) = cmp_exp c e in
+    print_string "\nHELLO3";
     let (tynew, opnew, snew) = cmp_op c (ty, op, s) in
     let is_global = match e.elt with
       | Id s -> (match snd @@ Ctxt.lookup s c with
@@ -336,7 +339,7 @@ let rec cmp_stmt (c:Ctxt.t) (rt:Ll.ty) (stmt:Ast.stmt node) : Ctxt.t * stream =
       (match op' with
        | Id op' -> Ctxt.add c (fst v) (ty', Id op'), [I (op', Alloca (Struct [I64; Array (i, x)]))] >@ s
        | _      -> failwith "cmp_decl: Unexpected error in array")
-    | Ptr t -> Ctxt.add c (fst v) (Ptr t, Id uid), s >:: I (uid, Alloca t) >@ snew >::I (uid, Store (tynew, opnew, Id uid))
+    | Ptr t -> Ctxt.add c (fst v) (Ptr t, Id uid), [I (uid, Alloca t)] >@ snew >::I (uid, Store (tynew, opnew, Id uid))
     | _ -> Ctxt.add c (fst v) (Ptr ty', Id uid), s >:: I (uid, Alloca ty') >@ s' >::I (uid, Store (ty', op', Id uid)) in
 
   let cmp_while c (e, lst) =

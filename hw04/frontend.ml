@@ -236,21 +236,30 @@ let rec cmp_exp (c:Ctxt.t) (exp:Ast.exp node) : Ll.ty * Ll.operand * stream =
   | CStr s        -> let newid = gensym "str" in
     let len = String.length s + 1 in
     Ptr (Array (len, I8)), Gid newid, [G (newid, (Array (len, I8), GString s))]
-  | CArr (ty,es)  ->
+  | CArr (ty,es)  -> let newid = gensym "array" in
     let args, ss = map_cmp_exp c es in
     let args, ss = map_cmp_op c args ss in
-    Ptr (Struct [cmp_ty ty; Array (List.length es, I8)]), Const 9L, []
+    let newty = (Struct [cmp_ty ty; Array (List.length es, cmp_ty ty)]) in
+    let rec array_init  (args:(Ll.ty * Ll.operand) list) (index:int64) =
+      match args with
+      | (ty,op)::tl -> let previd = gensym "array_init" in
+        [I (previd, Gep (Ptr newty, Id newid, [Const 0L; Const 1L; Const index]))] >@
+        [I (gensym "array_init", Store (ty, op, Id previd))] >@
+        array_init tl (Int64.add index 1L)
+      | [] -> ss in
+    Ptr newty, Id newid, ss >@ (array_init args 0L) (*[I (gensym "array_init", Gep (newty, Id newid, [Const 0L]))]*)
   | NewArr (ty,e) -> failwith "cmp_exp: unimplemented NewArr"
   | Id id         ->
     let (ty, op) = Ctxt.lookup id c in
     (ty, op, [])
   | Index (src,i) -> let newid = gensym "index" in
     let ty1, op1, s1 = cmp_exp c src in
-    let ty2, op2, s2 = cmp_exp c i in
-    let ty' = (match ty1 with
-      | Ptr (Array (_,ty')) -> Ptr ty'
+    let ty2, op2, s2 = cmp_op c (cmp_exp c i) in
+    let ty', s' = (match ty1 with
+      | Ptr (Struct [I64; Array (_,ty')]) -> Ptr ty', [I (newid, Gep (ty1, op1, [Const 0L; Const 1L; op2]))]
+      | Ptr (Array (_,ty')) -> Ptr ty', [I (newid, Gep (ty1, op1, [Const 0L; op2]))]
       | _ -> failwith "cmp_exp: Index: Invalid type to index") in
-    ty', Id newid, s2 >@ s1 >:: I (newid, Gep (ty1, op1, [Const 0L; op2]))
+    ty', Id newid, s2 >@ s1 >@ s'
   | Call (e,es)   -> let newid = gensym "call" in
     let ty, op = match e.elt with
       | Id id -> Ctxt.lookup id c
@@ -320,11 +329,12 @@ let rec cmp_stmt (c:Ctxt.t) (rt:Ll.ty) (stmt:Ast.stmt node) : Ctxt.t * stream =
     let ty', s', op' = if is_global
       then tynew, [I (globaluid, Load (ty, op))], Ll.Id globaluid
       else ty, [], op in
-    let new_ctxt = Ctxt.add c (fst v) (Ptr ty', Id uid) in
     match ty' with
-    | Ptr (Struct (_::(Array(_,_))::tl)) -> new_ctxt, []>::I (uid, Alloca ty') >::I ("fling", Gep (ty', op, [op]))
-    | _ ->
-    new_ctxt, s >:: I (uid, Alloca ty') >@ s' >::I (uid, Store (ty', op', Id uid)) in
+    | Ptr (Struct [I64; Array (i, x)]) ->
+      (match op' with
+       | Id op' -> Ctxt.add c (fst v) (ty', Id op'), [I (op', Alloca (Struct [I64; Array (i, x)]))] >@ s
+       | _      -> failwith "cmp_decl: Unexpected error in array")
+    | _ -> Ctxt.add c (fst v) (Ptr ty', Id uid), s >:: I (uid, Alloca ty') >@ s' >::I (uid, Store (ty', op', Id uid)) in
 
   let cmp_while c (e, lst) =
     let (ty, op, s) = cmp_exp c e in

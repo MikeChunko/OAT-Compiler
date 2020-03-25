@@ -234,13 +234,12 @@ let rec cmp_exp (c:Ctxt.t) (exp:Ast.exp node) : Ll.ty * Ll.operand * stream =
     | true  -> I1, Const 1L, [])
   | CInt i        -> I64, Const i, []
   | CStr s        -> let newid = gensym "str_" in
-    print_string "\nHELLO2";
     let len = String.length s + 1 in
     Ptr (Array (len, I8)), Gid newid, [G (newid, (Array (len, I8), GString s))]
   | CArr (ty,es)  -> let newid = gensym "array_" in
     let args, ss = map_cmp_exp c es in
     let args, ss = map_cmp_op c args ss in
-    let newty = (Struct [I64; Array (List.length es, cmp_ty ty)]) in
+    let newty = Struct [I64; Array (List.length es, cmp_ty ty)] in
     let rec array_init  (args:(Ll.ty * Ll.operand) list) (index:int64) =
       match args with
       | (ty,op)::tl -> let previd = gensym "array_init_" in
@@ -249,7 +248,22 @@ let rec cmp_exp (c:Ctxt.t) (exp:Ast.exp node) : Ll.ty * Ll.operand * stream =
         array_init tl (Int64.add index 1L)
       | [] -> [] in
     Ptr newty, Id newid, ss >@ (array_init args 0L)
-  | NewArr (ty,e) -> failwith "cmp_exp: unimplemented NewArr"
+  | NewArr (ty,e) -> let newid = gensym "array_" in
+    let ty1,op1,s1 = cmp_op c (cmp_exp c e) in
+    let i = match op1 with
+      | Const x -> Int64.to_int x
+      | _       -> failwith "NewArr: Size must be a constant int" in
+    let newty = Struct [I64; Array (i, cmp_ty ty)] in
+    let rec array_init  (i:int) (index:int64) =
+      if i = 0 then []
+      else ( let previd = gensym "array_init_" in
+        [I (previd, Gep (Ptr newty, Id newid, [Const 0L; Const 1L; Const index]))] >@
+        (match cmp_ty ty with
+          | I64 | I8 -> [I (previd, Store (cmp_ty ty, Const 0L, Id previd))]
+          | I1       -> [I (previd, Store (cmp_ty ty, Const 0L, Id previd))]
+          | _        -> [I (previd, Store (cmp_ty ty, Null, Id previd))]) >@
+        array_init (i-1) (Int64.add index 1L)) in
+    Ptr newty, Id newid, s1 >@ (array_init i 0L)
   | Id id         ->
     let (ty, op) = Ctxt.lookup id c in
     (ty, op, [])
@@ -319,11 +333,9 @@ let rec cmp_exp (c:Ctxt.t) (exp:Ast.exp node) : Ll.ty * Ll.operand * stream =
 
 let rec cmp_stmt (c:Ctxt.t) (rt:Ll.ty) (stmt:Ast.stmt node) : Ctxt.t * stream =
   let cmp_decl c v =
-    let e = (snd v) in
-    print_string "\nHELLO1";
-    let (ty, op, s) = cmp_exp c e in
-    print_string "\nHELLO3";
-    let (tynew, opnew, snew) = cmp_op c (ty, op, s) in
+    let e = snd v in
+    let ty, op, s = cmp_exp c e in
+    let tynew, opnew, snew = cmp_op c (ty, op, s) in
     let is_global = match e.elt with
       | Id s -> (match snd @@ Ctxt.lookup s c with
         | Gid _ -> true
@@ -357,7 +369,7 @@ let rec cmp_stmt (c:Ctxt.t) (rt:Ll.ty) (stmt:Ast.stmt node) : Ctxt.t * stream =
     (*Ctxt.print c; print_string ("\n-----------\n");*)
     let (ty, op, s) = cmp_op c (cmp_exp c e) in
     c, s >:: T (Ret (ty, Some op))
-  | Ret None -> failwith "cmp_stmt: Ret none unimplemented"
+  | Ret None -> c, [T (Ret (Void, None))]
   | Decl v -> cmp_decl c v
   | Assn (n1, n2) ->
     let ty1, op1, s1 = cmp_exp c n1 in
@@ -370,9 +382,9 @@ let rec cmp_stmt (c:Ctxt.t) (rt:Ll.ty) (stmt:Ast.stmt node) : Ctxt.t * stream =
       | Ptr (Struct [I64; Array (i,x)]), Id op2' -> let newid = gensym "bitcast_" in
         let newty = (Struct [I64; Array (0,x)]) in
         [I (op2', Alloca (Struct [I64; Array (i, x)]))],
-        [I (newid, Bitcast (ty2, Id op2', Ptr newty))] >@ [I (id, Store(Ptr newty, Id newid, op1))]
+        [I (newid, Bitcast (ty2, Id op2', Ptr newty))] >:: I (id, Store(Ptr newty, Id newid, op1))
       | Ptr _,_ -> let ty2, op2, s2 = cmp_op c (ty2, op2, s2) in
-        [], s2 >@ [I (id, Store(ty2, op2, op1))]
+        [], s2 >:: I (id, Store(ty2, op2, op1))
       | _       -> let ty2, op2, s2 = cmp_op c (ty2, op2, s2) in
         [], [I (id, Store(ty2, op2, op1))] in
     (*type_check [ty1] [Ptr ty2]; (* Checks that ty1 is a pointer of ty2 *)*)
@@ -385,9 +397,9 @@ let rec cmp_stmt (c:Ctxt.t) (rt:Ll.ty) (stmt:Ast.stmt node) : Ctxt.t * stream =
       let then_label = label ^ "_then" in
       let else_label = label ^ "_else" in
       let exit_label = label ^ "_exit" in
-    let then_block = (cmp_block c Void then_lst) in
-    let else_block = (cmp_block c Void else_lst) in
-    if ((List.length else_block) > 0) then
+    let then_block = cmp_block c Void then_lst in
+    let else_block = cmp_block c Void else_lst in
+    if (List.length else_block) > 0 then
       let cbr = [T (Cbr (op, then_label, else_label))] in
       c, [L exit_label] @ [T (Br exit_label)] @ else_block @ [L else_label] @ [T (Br exit_label)] @ then_block @ [L then_label] @ cbr @ s
     else (* Avoids compiling an empty else block if there's no else *)
@@ -395,17 +407,16 @@ let rec cmp_stmt (c:Ctxt.t) (rt:Ll.ty) (stmt:Ast.stmt node) : Ctxt.t * stream =
       c, [L exit_label] @ [T (Br exit_label)] @ then_block @ [L then_label] @ cbr @ s
   | For (vlst, e, s, slst) ->
     let rec cmp_decl_lst c = function
-      | h::tl ->
-        let (c', decl_lst) = cmp_decl c h in
+      | h::tl -> let (c', decl_lst) = cmp_decl c h in
         c', (snd @@ cmp_decl_lst c' tl) @ decl_lst
-      | [] -> c, [] in
+      | []    -> c, [] in
     let (c', decl_list) = cmp_decl_lst c vlst in
     let cond = match e with
       | Some e' -> e'
-      | None -> {elt = CBool true; loc = "",(0,0),(0,0) } in
+      | None    -> {elt = CBool true; loc = "",(0,0),(0,0) } in
     let s' = match s with
       | Some incr -> slst @ [incr]
-      | None -> slst in
+      | None      -> slst in
     c, (snd @@ cmp_while c' (cond, s')) @ decl_list
 
 (* Compile a series of statements *)

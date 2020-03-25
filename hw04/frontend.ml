@@ -237,17 +237,32 @@ let rec cmp_exp (c:Ctxt.t) (exp:Ast.exp node) : Ll.ty * Ll.operand * stream =
     let len = String.length s + 1 in
     Ptr (Array (len, I8)), Gid newid, [G (newid, (Array (len, I8), GString s))]
   | CArr (ty,es)  -> let newid = gensym "array_" in
-    let args, ss = map_cmp_exp c es in
-    let args, ss = map_cmp_op c args ss in
+    let args', ss' = map_cmp_exp c es in
+    let args, ss = map_cmp_op c args' ss' in
     let newty = Struct [I64; Array (List.length es, cmp_ty ty)] in
-    let rec array_init  (args:(Ll.ty * Ll.operand) list) (index:int64) =
-      match args with
-      | (ty,op)::tl -> let previd = gensym "array_init_" in
+    let rec array_init (args':(Ll.ty * Ll.operand) list) (args:(Ll.ty * Ll.operand) list) (index:int64) =
+      match args', args with
+      | (ty1',op')::tl', (ty1,op)::tl -> let previd = gensym "array_init_" in
+        (match ty1 with
+        | Struct [I64; Array (i,x)] ->
+          let newty' = Struct [I64; Array (0,x)] in
+          let previd' = gensym "array_init_" in
+          (*[I (previd''', Load (newty, Id newid))] >@*)
+          [I (previd, Gep (Ptr newty, Id newid, [Const 0L; Const 1L; Const index]))] >@
+          (*[I (previd', Load (Ptr (Ptr newty'), Id previd))] >@*)
+          [I (previd', Bitcast (Ptr ty1, op', Ptr newty'))] >@
+          [I (gensym "array_init", Store (Ptr newty', Id previd', Id previd))] >@
+          array_init tl' tl (Int64.add index 1L)
+        | _ ->
+          [I (previd, Gep (Ptr newty, Id newid, [Const 0L; Const 1L; Const index]))] >@
+          [I (gensym "array_init", Store (ty1, op, Id previd))] >@
+          array_init [] tl (Int64.add index 1L))
+      | _,(ty1,op)::tl -> let previd = gensym "array_init_" in
         [I (previd, Gep (Ptr newty, Id newid, [Const 0L; Const 1L; Const index]))] >@
-        [I (gensym "array_init", Store (ty, op, Id previd))] >@
-        array_init tl (Int64.add index 1L)
-      | [] -> [] in
-    Ptr newty, Id newid, ss >@ (array_init args 0L)
+        [I (gensym "array_init", Store (ty1, op, Id previd))] >@
+        array_init [] tl (Int64.add index 1L)
+      | _ -> [] in
+    Ptr newty, Id newid, [I (newid, Alloca (newty))] >@ ss >@ (array_init args' args 0L)
   | NewArr (ty,e) -> let newid = gensym "array_" in
     let ty1,op1,s1 = cmp_op c (cmp_exp c e) in
     let i = match op1 with
@@ -276,7 +291,7 @@ let rec cmp_exp (c:Ctxt.t) (exp:Ast.exp node) : Ll.ty * Ll.operand * stream =
       | Ptr (Struct [I64; Array (_,ty')]) -> Ptr ty', [I (newid, Gep (ty1, op1, [Const 0L; Const 1L; op2]))]
       | Ptr (Array (_,ty')) -> Ptr ty', [I (newid, Gep (ty1, op1, [Const 0L; op2]))]
       | _ -> failwith "cmp_exp: Index: Invalid type to index") in
-    ty', Id newid, s2 >@ s1 >@ s'
+    ty', Id newid, s2 >@ s'
   | Call (e,es)   -> let newid = gensym "call_" in
     let ty, op = match e.elt with
       | Id id -> Ctxt.lookup id c
@@ -349,7 +364,7 @@ let rec cmp_stmt (c:Ctxt.t) (rt:Ll.ty) (stmt:Ast.stmt node) : Ctxt.t * stream =
     match ty' with
     | Ptr (Struct [I64; Array (i, x)]) ->
       (match op' with
-       | Id op' -> Ctxt.add c (fst v) (ty', Id op'), [I (op', Alloca (Struct [I64; Array (i, x)]))] >@ s
+       | Id op' -> Ctxt.add c (fst v) (ty', Id op'), s
        | _      -> failwith "cmp_decl: Unexpected error in array")
     | Ptr t -> Ctxt.add c (fst v) (Ptr t, Id uid), [I (uid, Alloca t)] >@ snew >::I (uid, Store (tynew, opnew, Id uid))
     | _ -> Ctxt.add c (fst v) (Ptr ty', Id uid), s >:: I (uid, Alloca ty') >@ s' >::I (uid, Store (ty', op', Id uid)) in
@@ -381,8 +396,7 @@ let rec cmp_stmt (c:Ctxt.t) (rt:Ll.ty) (stmt:Ast.stmt node) : Ctxt.t * stream =
     let s3, ss = match ty2, op2 with
       | Ptr (Struct [I64; Array (i,x)]), Id op2' -> let newid = gensym "bitcast_" in
         let newty = (Struct [I64; Array (0,x)]) in
-        [I (op2', Alloca (Struct [I64; Array (i, x)]))],
-        [I (newid, Bitcast (ty2, Id op2', Ptr newty))] >:: I (id, Store(Ptr newty, Id newid, op1))
+        [], [I (newid, Bitcast (ty2, Id op2', Ptr newty))] >:: I (id, Store(Ptr newty, Id newid, op1))
       | Ptr _,_ -> let ty2, op2, s2 = cmp_op c (ty2, op2, s2) in
         [], s2 >:: I (id, Store(ty2, op2, op1))
       | _       -> let ty2, op2, s2 = cmp_op c (ty2, op2, s2) in

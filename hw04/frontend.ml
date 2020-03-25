@@ -348,7 +348,7 @@ let rec cmp_stmt (c:Ctxt.t) (rt:Ll.ty) (stmt:Ast.stmt node) : Ctxt.t * stream =
     c, [L end_label] @ entry_br @ block @ [L loop_label] @ cbr @ s @ [L start_label] @ entry_br in
   match stmt.elt with
   | Ret (Some e) ->
-    (*Ctxt.print c;*)
+    Ctxt.print c;
     let (ty, op, s) = cmp_op c (cmp_exp c e) in
     c, s >:: T (Ret (ty, Some op))
   | Ret None -> failwith "cmp_stmt: Ret none unimplemented"
@@ -428,7 +428,7 @@ let cmp_global_ctxt (c:Ctxt.t) (p:Ast.prog) : Ctxt.t =
           | _ -> cmp_rty ty)
         | CBool _       -> I1
         | CInt _        -> I64
-        | CStr s -> Array (String.length s + 1, I8)
+        | CStr s -> Ptr (Array (String.length s + 1, I8))
         | CArr (ty, es) -> Struct [I64; Array (List.length es, cmp_ty ty)]
         | NewArr _ -> failwith "Unimplemented global NewArr"
         | _ -> failwith "Unimplemented global type") in
@@ -485,7 +485,8 @@ let rec cmp_gexp (c:Ctxt.t) (e:Ast.exp node) : Ll.gdecl * (Ll.gid * Ll.gdecl) li
       | RFun (tys, rty) -> failwith "cmp_gexp: Null RFun unimplemented")
     | CBool b -> I1, GInt (if (b = true) then 1L else 0L)
     | CInt i -> I64, GInt i
-    | CStr s -> failwith "cmp_gexp: CStr"
+    | CStr s -> let len = String.length s + 1 in
+      Array (len, I8), GString s
     | CArr (ty, es) ->
       let length = List.length es in
       let params = (List.map (fun i -> cmp_ty ty, cmp_ginit i.elt) es) in

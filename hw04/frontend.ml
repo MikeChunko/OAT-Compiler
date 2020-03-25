@@ -247,7 +247,7 @@ let rec cmp_exp (c:Ctxt.t) (exp:Ast.exp node) : Ll.ty * Ll.operand * stream =
         [I (gensym "array_init", Store (ty, op, Id previd))] >@
         array_init tl (Int64.add index 1L)
       | [] -> ss in
-    Ptr newty, Id newid, ss >@ (array_init args 0L) (*[I (gensym "array_init", Gep (newty, Id newid, [Const 0L]))]*)
+    Ptr newty, Id newid, ss >@ (array_init args 0L)
   | NewArr (ty,e) -> failwith "cmp_exp: unimplemented NewArr"
   | Id id         ->
     let (ty, op) = Ctxt.lookup id c in
@@ -348,20 +348,20 @@ let rec cmp_stmt (c:Ctxt.t) (rt:Ll.ty) (stmt:Ast.stmt node) : Ctxt.t * stream =
     c, [L end_label] @ entry_br @ block @ [L loop_label] @ cbr @ s @ [L start_label] @ entry_br in
   match stmt.elt with
   | Ret (Some e) ->
-    Ctxt.print c;
+    (*Ctxt.print c;*)
     let (ty, op, s) = cmp_op c (cmp_exp c e) in
     c, s >:: T (Ret (ty, Some op))
   | Ret None -> failwith "cmp_stmt: Ret none unimplemented"
   | Decl v -> cmp_decl c v
   | Assn (n1, n2) ->
-    let (ty1, op1, _) = cmp_exp c n1 in
+    let (ty1, op1, s1) = cmp_exp c n1 in
     let uid = match op1 with
       | Id uid -> uid
       | Gid gid -> failwith "Assn: Gid"
       | _ -> failwith "Assn: Invalid input" in
-    let (ty2, op2, s) = cmp_exp c n2 in
+    let (ty2, op2, s2) = cmp_exp c n2 in
     type_check [ty1] [Ptr ty2]; (* Checks that ty1 is a pointer of ty2 *)
-    c, [I (uid, Store(ty2, op2, Id uid))] @ s
+    c, [I (uid, Store(ty2, op2, Id uid))] @ s2 @ s1
   | While (e, lst) -> cmp_while c (e,lst)
   | SCall (e, lst) -> failwith "cmp_stmt: SCall unimplemented"
   | If (e, then_lst, else_lst) ->
@@ -389,7 +389,7 @@ let rec cmp_stmt (c:Ctxt.t) (rt:Ll.ty) (stmt:Ast.stmt node) : Ctxt.t * stream =
       | Some e' -> e'
       | None -> {elt = CBool true; loc = "",(0,0),(0,0) } in
     let s' = match s with
-      | Some incr -> incr::slst
+      | Some incr -> slst @ [incr]
       | None -> slst in
     c, (snd @@ cmp_while c' (cond, s')) @ decl_list
 
@@ -429,7 +429,7 @@ let cmp_global_ctxt (c:Ctxt.t) (p:Ast.prog) : Ctxt.t =
         | CBool _       -> I1
         | CInt _        -> I64
         | CStr s -> Array (String.length s + 1, I8)
-        | CArr (ty, es) -> Array (List.length es, cmp_ty ty)
+        | CArr (ty, es) -> Struct [I64; Array (List.length es, cmp_ty ty)]
         | NewArr _ -> failwith "Unimplemented global NewArr"
         | _ -> failwith "Unimplemented global type") in
       Ctxt.add c name (ty, Gid name)
@@ -486,8 +486,10 @@ let rec cmp_gexp (c:Ctxt.t) (e:Ast.exp node) : Ll.gdecl * (Ll.gid * Ll.gdecl) li
     | CBool b -> I1, GInt (if (b = true) then 1L else 0L)
     | CInt i -> I64, GInt i
     | CStr s -> failwith "cmp_gexp: CStr"
-    | CArr (ty, es) -> let params = (List.map (fun i -> cmp_ty ty, cmp_ginit i.elt) es) in
-        Array ((List.length es), cmp_ty ty), GArray params
+    | CArr (ty, es) ->
+      let length = List.length es in
+      let params = (List.map (fun i -> cmp_ty ty, cmp_ginit i.elt) es) in
+      Struct [I64; Array (length, cmp_ty ty)], GStruct [I64, GInt (Int64.of_int length); Array (length, cmp_ty ty), GArray params]
     | Id s -> failwith "cmp_gexp Id"
     | Index (n1, n2) -> failwith "cmp_gexp: Index"
     | _ -> failwith "cmp_gexp: unimplemented type" in

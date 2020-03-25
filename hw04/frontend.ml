@@ -355,13 +355,13 @@ let rec cmp_stmt (c:Ctxt.t) (rt:Ll.ty) (stmt:Ast.stmt node) : Ctxt.t * stream =
   | Decl v -> cmp_decl c v
   | Assn (n1, n2) ->
     let (ty1, op1, s1) = cmp_exp c n1 in
-    let uid = match op1 with
-      | Id uid -> uid
-      | Gid gid -> failwith "Assn: Gid"
-      | _ -> failwith "Assn: Invalid input" in
+    let id = match op1 with
+      | Id uid  -> uid
+      | Gid gid -> gid
+      | _       -> failwith "Assn: Invalid input" in
     let (ty2, op2, s2) = cmp_exp c n2 in
     type_check [ty1] [Ptr ty2]; (* Checks that ty1 is a pointer of ty2 *)
-    c, [I (uid, Store(ty2, op2, Id uid))] @ s2 @ s1
+    c, [I (id, Store(ty2, op2, op1))] @ s2 @ s1
   | While (e, lst) -> cmp_while c (e,lst)
   | SCall (e, lst) -> failwith "cmp_stmt: SCall unimplemented"
   | If (e, then_lst, else_lst) ->

@@ -264,21 +264,25 @@ let rec cmp_exp (c:Ctxt.t) (exp:Ast.exp node) : Ll.ty * Ll.operand * stream =
       | _ -> [] in
     Ptr newty, Id newid, [I (newid, Alloca (newty))] >@ ss >@ (array_init args' args 0L)
   | NewArr (ty,e) -> let newid = gensym "array_" in
+    let newid2 = gensym "array_" in
     let ty1,op1,s1 = cmp_op c (cmp_exp c e) in
     let i = match op1 with
       | Const x -> Int64.to_int x
-      | _       -> failwith "NewArr: Size must be a constant int" in
+      | _       -> Int64.to_int 0L
+    in
     let newty = Struct [I64; Array (i, cmp_ty ty)] in
     let rec array_init  (i:int) (index:int64) =
       if i = 0 then []
       else ( let previd = gensym "array_init_" in
-        [I (previd, Gep (Ptr newty, Id newid, [Const 0L; Const 1L; Const index]))] >@
+        [I (previd, Gep (Ptr newty, Id newid2, [Const 0L; Const 1L; Const index]))] >@
         (match cmp_ty ty with
           | I64 | I8 -> [I (previd, Store (cmp_ty ty, Const 0L, Id previd))]
           | I1       -> [I (previd, Store (cmp_ty ty, Const 0L, Id previd))]
           | _        -> [I (previd, Store (cmp_ty ty, Null, Id previd))]) >@
         array_init (i-1) (Int64.add index 1L)) in
-    Ptr newty, Id newid, s1 >@ (array_init i 0L)
+    Ptr newty, Id newid2, s1 >@ [I (newid, Call(Ptr I64, Gid "oat_alloc_array", [I64, op1]))] >@
+    [I (newid2, Bitcast(Ptr I64, Id newid, Ptr newty))] >@
+    (array_init i 0L)
   | Id id         ->
     let (ty, op) = Ctxt.lookup id c in
     (ty, op, [])
@@ -362,9 +366,10 @@ let rec cmp_stmt (c:Ctxt.t) (rt:Ll.ty) (stmt:Ast.stmt node) : Ctxt.t * stream =
       then tynew, [I (globaluid, Load (ty, op))], Ll.Id globaluid
       else ty, [], op in
     match ty' with
-    | Ptr (Struct [I64; Array (i, x)]) ->
+    | Ptr (Struct [_; Array (i, x)]) ->
       (match op' with
-       | Id op' -> Ctxt.add c (fst v) (ty', Id op'), s
+       | Id op' -> print_string ("Array is: " ^ op'); Ctxt.add c (fst v) (Ptr ty', Id uid), s >:: I (uid, Alloca ty') >::
+         I (uid, Store (ty', Id op', Id uid) )
        | _      -> failwith "cmp_decl: Unexpected error in array")
     | Ptr t -> Ctxt.add c (fst v) (Ptr t, Id uid), [I (uid, Alloca t)] >@ snew >::I (uid, Store (tynew, opnew, Id uid))
     | _ -> Ctxt.add c (fst v) (Ptr ty', Id uid), s >:: I (uid, Alloca ty') >@ s' >::I (uid, Store (ty', op', Id uid)) in
@@ -385,7 +390,7 @@ let rec cmp_stmt (c:Ctxt.t) (rt:Ll.ty) (stmt:Ast.stmt node) : Ctxt.t * stream =
     let (ty, op, s) = cmp_op c (cmp_exp c e) in
     c, s >:: T (Ret (ty, Some op))
   | Ret None -> c, [T (Ret (Void, None))]
-  | Decl v -> cmp_decl c v
+  | Decl v -> print_string ("Declaring: " ^ fst v ^ "\n"); cmp_decl c v
   | Assn (n1, n2) ->
     let ty1, op1, s1 = cmp_exp c n1 in
     let id = match op1 with

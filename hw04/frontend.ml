@@ -216,7 +216,7 @@ let rec cmp_exp (c:Ctxt.t) (exp:Ast.exp node) : Ll.ty * Ll.operand * stream =
       match exps with
       | e::tl ->
         let ty, op, s = cmp_exp c e in
-        map_helper tl (lst@[(ty,op)]) (ss@s)
+        map_helper tl (lst @ [ty,op]) (ss @ s)
       | [] -> lst, ss in
     map_helper exps [] [] in
   let map_cmp_op (c:Ctxt.t) (lst:(Ll.ty * Ll.operand) list) (s:stream) : (Ll.ty * Ll.operand) list * stream =
@@ -224,9 +224,17 @@ let rec cmp_exp (c:Ctxt.t) (exp:Ast.exp node) : Ll.ty * Ll.operand * stream =
       match lst with
       | (ty,op)::tl ->
         let ty', op', s' = cmp_op c (ty,op,[]) in
-        map_helper tl  (lst' @ [(ty',op')]) (s >@ s')
+        map_helper tl  (lst' @ [ty',op']) (s >@ s')
       | [] -> lst', s in
     map_helper lst [] s in
+  let map_bitcast (c:Ctxt.t) (lst:(Ll.ty * Ll.operand) list) (s:stream) (tylist:Ll.ty list) : (Ll.ty * Ll.operand) list * stream =
+    let rec map_helper (lst:(Ll.ty * Ll.operand) list) (lst':(Ll.ty * Ll.operand) list) (s:stream) (tylist:Ll.ty list) =
+      match lst, tylist with
+      | (ty1,op1)::tl1, ty2::tl2 -> let newid = gensym "call_bitcast" in
+        let s' = I (newid, Bitcast (ty1, op1, ty2)) in
+        map_helper tl1 (lst' @ [ty2, Id newid]) (s >:: s') tl2
+      | _                        -> lst', s in
+    map_helper lst [] s tylist in
   match exp.elt with
   | CNull ty      -> cmp_rty ty, Null, []
   | CBool b       -> (match b with
@@ -292,19 +300,22 @@ let rec cmp_exp (c:Ctxt.t) (exp:Ast.exp node) : Ll.ty * Ll.operand * stream =
     let ty', s' = (match ty1 with
       | Ptr (Ptr (Struct [I64; Array (_,ty')])) -> let ty1, op1, s1' = cmp_op c (ty1, op1, s1) in
         Ptr ty', s1' >@ [I (newid, Gep (ty1, op1, [Const 0L; Const 1L; op2]))]
-      | Ptr (Struct [I64; Array (_,ty')]) -> Ptr ty', [I (newid, Gep (ty1, op1, [Const 0L; Const 1L; op2]))]
-      | Ptr (Array (_,ty')) -> Ptr ty', [I (newid, Gep (ty1, op1, [Const 0L; op2]))]
+      | Ptr (Struct [I64; Array (_,ty')])       ->
+        Ptr ty', s1 >@ [I (newid, Gep (ty1, op1, [Const 0L; Const 1L; op2]))]
+      | Ptr (Array (_,ty'))                     ->
+        Ptr ty', s1 >@ [I (newid, Gep (ty1, op1, [Const 0L; op2]))]
       | _ -> failwith "cmp_exp: Index: Invalid type to index") in
     ty', Id newid, s2 >@ s'
   | Call (e,es)   -> let newid = gensym "call_" in
     let ty, op = match e.elt with
       | Id id -> Ctxt.lookup id c
       | _     -> failwith "cmp_exp: call: Invalid function name" in
-    let retty = match ty with
-      | Ptr (Fun (_, ty')) -> ty'
+    let tylst, retty = match ty with
+      | Ptr (Fun (tylst, ty')) -> tylst, ty'
       | _                  -> failwith "cmp_exp: call: Not a function" in
     let args, ss = map_cmp_exp c es in
     let args, ss = map_cmp_op c args ss in
+    let args, ss = map_bitcast c args ss tylst in
     retty, Id newid, ss >:: I (newid, Call (retty, op, args))
   | Bop (b,e1,e2) -> let newid = gensym "bop_" in
     let (t1, t2, t3) = typ_of_binop b in
@@ -366,9 +377,9 @@ let rec cmp_stmt (c:Ctxt.t) (rt:Ll.ty) (stmt:Ast.stmt node) : Ctxt.t * stream =
       then tynew, [I (globaluid, Load (ty, op))], Ll.Id globaluid
       else ty, [], op in
     match ty' with
-    | Ptr (Struct [_; Array (i, x)]) ->
+    | Ptr (Struct [I64; Array (i, x)]) ->
       (match op' with
-       | Id op' -> print_string ("Array is: " ^ op'); Ctxt.add c (fst v) (Ptr ty', Id uid), s >:: I (uid, Alloca ty') >::
+       | Id op' -> (*print_string ("Array is: " ^ op');*) Ctxt.add c (fst v) (Ptr ty', Id uid), s >:: I (uid, Alloca ty') >::
          I (uid, Store (ty', Id op', Id uid) )
        | _      -> failwith "cmp_decl: Unexpected error in array")
     | Ptr t -> Ctxt.add c (fst v) (Ptr t, Id uid), [I (uid, Alloca t)] >@ snew >::I (uid, Store (tynew, opnew, Id uid))
@@ -390,7 +401,7 @@ let rec cmp_stmt (c:Ctxt.t) (rt:Ll.ty) (stmt:Ast.stmt node) : Ctxt.t * stream =
     let (ty, op, s) = cmp_op c (cmp_exp c e) in
     c, s >:: T (Ret (ty, Some op))
   | Ret None -> c, [T (Ret (Void, None))]
-  | Decl v -> print_string ("Declaring: " ^ fst v ^ "\n"); cmp_decl c v
+  | Decl v -> (*print_string ("Declaring: " ^ fst v ^ "\n");*) cmp_decl c v
   | Assn (n1, n2) ->
     let ty1, op1, s1 = cmp_exp c n1 in
     let id = match op1 with

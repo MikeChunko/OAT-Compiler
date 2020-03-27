@@ -205,15 +205,17 @@ let rec cmp_exp (c:Ctxt.t) (exp:Ast.exp node) : Ll.ty * Ll.operand * stream =
       | e::tl ->
         let ty, op, s = cmp_exp c e in
         map_helper tl (lst @ [ty,op]) (ss @ s)
-      | [] -> lst, ss in
+      | []    -> lst, ss in
     map_helper exps [] [] in
   let map_cmp_op (lst:(Ll.ty * Ll.operand) list) (s:stream) : (Ll.ty * Ll.operand) list * stream =
     let rec map_helper (lst:(Ll.ty * Ll.operand) list) (lst':(Ll.ty * Ll.operand) list) (s:stream) =
       match lst with
       | (ty,op)::tl ->
-        let ty', op', s' = cmp_op (ty,op,[]) in
-        map_helper tl  (lst' @ [ty',op']) (s >@ s')
-      | [] -> lst', s in
+        (match ty with 
+        | Ptr (Array _) -> map_helper tl (lst' @ [ty,op]) s
+        | _             -> let ty', op', s' = cmp_op (ty,op,[]) in
+          map_helper tl  (lst' @ [ty',op']) (s >@ s'))
+      | []          -> lst', s in
     map_helper lst [] s in
   let map_bitcast (lst:(Ll.ty * Ll.operand) list) (s:stream) (tylist:Ll.ty list) : (Ll.ty * Ll.operand) list * stream =
     let rec map_helper (lst:(Ll.ty * Ll.operand) list) (lst':(Ll.ty * Ll.operand) list) (s:stream) (tylist:Ll.ty list) =
@@ -412,8 +414,7 @@ let rec cmp_stmt (c:Ctxt.t) (rt:Ll.ty) (stmt:Ast.stmt node) : Ctxt.t * stream =
     c, ss @ s1
   | While (e, lst) -> cmp_while c (e,lst)
   | SCall (e, lst) ->
-    let ty, op, s = cmp_exp c e in
-    let ty', op', s' =  match (List.hd lst).elt with
+    let ty, op, s1 =  match (List.hd lst).elt with
       | CStr str -> cmp_exp c (List.hd lst)
       | NewArr _ -> failwith "Scall: CArr unimplemented"
       | Id _ -> failwith "SCall: Id unimplemented"
@@ -421,8 +422,13 @@ let rec cmp_stmt (c:Ctxt.t) (rt:Ll.ty) (stmt:Ast.stmt node) : Ctxt.t * stream =
       | Call _ -> failwith "SCall: Call unimplemented"
       | _ -> failwith "SCall: Unimplemented type passed" in
     let str_id = gensym "print_str_" in
-    c, s' >@ [I (str_id, Bitcast (ty', op', Ptr I8))] >@
-    [I (gensym "print_string", Call(Void, Gid "print_string", [Ptr I8, Id str_id]))]
+    let s2 = match ty with
+      | Array _ -> let newid = gensym "scall_" in
+        [I (newid, Gep (ty, op, [Const 0L]))] >@
+        [I (str_id, Bitcast (ty, Id newid, Ptr I8))] 
+      | _ -> [I (str_id, Bitcast (ty, op, Ptr I8))] in
+    c, s1 >@ s2 >::
+    I (gensym "print_string", Call(Void, Gid "print_string", [Ptr I8, Id str_id]))
 
   | If (e, then_lst, else_lst) ->
     let (ty, op, s) = cmp_op (cmp_exp c e) in

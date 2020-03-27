@@ -392,7 +392,21 @@ let rec cmp_stmt (c:Ctxt.t) (rt:Ll.ty) (stmt:Ast.stmt node) : Ctxt.t * stream =
         [], [I (id, Store(ty2, op2, op1))] in
     c, ss @ s2 @ s3 @ s1
   | While (e, lst) -> cmp_while c (e,lst)
-  | SCall (e, lst) -> failwith "cmp_stmt: SCall unimplemented"
+  | SCall (e, lst) -> let ty, op, s = cmp_exp c e in
+    let ty, op, s = cmp_op (ty, op, s) in
+    let el = (List.hd lst).elt in
+      let ty', op', s' =  match el with
+      | CStr str -> cmp_exp c (List.hd lst)
+      | NewArr _ -> failwith "Scall: CArr unimplemented"
+      | Id _ -> failwith "SCall: Id unimplemented"
+      | Index _ -> failwith "SCall: Index unimplemented"
+      | Call _ -> failwith "SCall: Call unimplemented"
+      | _ -> failwith "SCall: Unimplemented type passed"
+      in
+    let str_id = gensym "print_str_" in
+    c, s' >@ [I (str_id, Bitcast (ty', op', Ptr I8))] >@
+    [I (gensym "print_string", Call(Void, Gid "print_string", [Ptr I8, Id str_id]))]
+
   | If (e, then_lst, else_lst) ->
     let (ty, op, s) = cmp_op (cmp_exp c e) in
     let label = gensym "lbl_" in

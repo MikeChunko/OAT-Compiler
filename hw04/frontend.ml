@@ -348,7 +348,7 @@ let rec cmp_stmt (c:Ctxt.t) (rt:Ll.ty) (stmt:Ast.stmt node) : Ctxt.t * stream =
         | Gid _ -> true
         | _     -> false)
       | _    -> false in
-    let uid = gensym (fst v) ^ "_" in
+    let uid = gensym ((fst v) ^ "_") in
     let globaluid = gensym "decl_" in
     let ty', s', op' = if is_global
       then tynew, [I (globaluid, Load (ty, op))], Ll.Id globaluid
@@ -371,38 +371,44 @@ let rec cmp_stmt (c:Ctxt.t) (rt:Ll.ty) (stmt:Ast.stmt node) : Ctxt.t * stream =
     let cbr = [T (Cbr (op, loop_label, end_label))] in
     c, L end_label :: entry_br @ block @ L loop_label :: cbr @ s @ L start_label :: entry_br in
   match stmt.elt with
-  | Ret (Some e) -> (*Ctxt.print c; print_string ("\n-----------\n");*)
+  | Ret (Some e) ->
     let (ty, op, s) = cmp_op (cmp_exp c e) in
     c, s >:: T (Ret (ty, Some op))
   | Ret None -> c, [T (Ret (Void, None))]
-  | Decl v -> (*print_string ("Declaring: " ^ fst v ^ "\n");*) cmp_decl c v
+  | Decl v -> cmp_decl c v
   | Assn (n1, n2) ->
     let ty1, op1, s1 = cmp_exp c n1 in
     let id = match op1 with
       | Id id | Gid id -> id
       | _              -> failwith "Assn: Invalid input" in
     let ty2, op2, s2 = cmp_exp c n2 in
-    let s3, ss = match ty2, op2 with
-      | Ptr (Struct [I64; Array (i,x)]), Id op2' -> let newid = gensym "bitcast_" in
-        let newty = (Struct [I64; Array (0,x)]) in
-        [], [I (newid, Bitcast (ty2, Id op2', Ptr newty))] >:: I (id, Store(Ptr newty, Id newid, op1))
+    let ss = match ty2, op2 with
+      | Ptr (Struct [I64; Array (_,x)]), Id op2' -> let newid = gensym "bitcast_" in
+        let newty = (Struct [I64; Array (0,x)]) in print_string ("\nCase 1\n");
+        [I (newid, Bitcast (ty2, Id op2', Ptr newty))] >:: I (id, Store(Ptr newty, Id newid, op1))
+      | Ptr (Ptr (Struct [I64; Array (i,x)])), Id op2' -> let newid = gensym "bitcast_" in
+        let ty2' = Ptr (Struct [I64; Array (i,x)]) in
+        let ty1' = match ty1 with
+          | Ptr (Ptr x) -> Ptr x
+          | _           -> ty1 in
+        [ I (newid, Load (ty2, op2))
+        ; I (newid ^ "_", Bitcast (ty2', Id newid, ty1'))
+        ; I (id, Store(ty1', Id (newid ^ "_"), op1)) ]
       | Ptr _,_ -> let ty2, op2, s2 = cmp_op (ty2, op2, s2) in
-        [], s2 >:: I (id, Store(ty2, op2, op1))
+        s2 >:: I (id, Store(ty2, op2, op1))
       | _       -> let ty2, op2, s2 = cmp_op (ty2, op2, s2) in
-        [], [I (id, Store(ty2, op2, op1))] in
-    c, ss @ s2 @ s3 @ s1
+        [I (id, Store(ty2, op2, op1))] in
+    c, ss @ s2 @ s1
   | While (e, lst) -> cmp_while c (e,lst)
-  | SCall (e, lst) -> let ty, op, s = cmp_exp c e in
-    let ty, op, s = cmp_op (ty, op, s) in
-    let el = (List.hd lst).elt in
-      let ty', op', s' =  match el with
+  | SCall (e, lst) ->
+    let ty, op, s = cmp_exp c e in
+    let ty', op', s' =  match (List.hd lst).elt with
       | CStr str -> cmp_exp c (List.hd lst)
       | NewArr _ -> failwith "Scall: CArr unimplemented"
       | Id _ -> failwith "SCall: Id unimplemented"
       | Index _ -> failwith "SCall: Index unimplemented"
       | Call _ -> failwith "SCall: Call unimplemented"
-      | _ -> failwith "SCall: Unimplemented type passed"
-      in
+      | _ -> failwith "SCall: Unimplemented type passed" in
     let str_id = gensym "print_str_" in
     c, s' >@ [I (str_id, Bitcast (ty', op', Ptr I8))] >@
     [I (gensym "print_string", Call(Void, Gid "print_string", [Ptr I8, Id str_id]))]
@@ -493,7 +499,7 @@ let cmp_fdecl (c:Ctxt.t) (f:Ast.fdecl node) : Ll.fdecl * (Ll.gid * Ll.gdecl) lis
     | []          -> c in
   let rec add_params (c:Ctxt.t) (args:(Ast.ty * Ast.id) list) (ss:stream) : Ctxt.t * stream =
     match args with
-    | (ty,id)::tl -> let uid = gensym id ^ "_" in
+    | (ty,id)::tl -> let uid = gensym (id ^ "_") in
       let newctxt = Ctxt.add c id (Ptr (cmp_ty ty), Id uid) in
       add_params newctxt tl (ss >@ [I (uid, Alloca (cmp_ty ty))] >@ [I (uid, Store (cmp_ty ty, Id id, Id uid))])
     | []          -> c, ss in

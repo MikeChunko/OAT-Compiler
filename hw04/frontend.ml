@@ -372,8 +372,17 @@ let rec cmp_stmt (c:Ctxt.t) (rt:Ll.ty) (stmt:Ast.stmt node) : Ctxt.t * stream =
     c, L end_label :: entry_br @ block @ L loop_label :: cbr @ s @ L start_label :: entry_br in
   match stmt.elt with
   | Ret (Some e) ->
-    let (ty, op, s) = cmp_op (cmp_exp c e) in
-    c, s >:: T (Ret (ty, Some op))
+    let rec array_cleanup (ty:Ll.ty) =
+      match ty with
+      | Ptr (Struct [I64; Array (_,t)]) -> Ptr (Struct [I64; Array (0, array_cleanup t)])
+      | _ -> ty in
+    let ty, op, s = cmp_op (cmp_exp c e) in
+    let ty', newid, s' = match ty with
+      | Ptr (Struct [I64; Array _]) -> let newid = gensym "Ret_" in
+        let ty' = (array_cleanup ty) in
+        ty', Ll.Id newid, [I (newid, Bitcast (ty, op, ty'))]
+      | _                           -> ty, op, [] in
+    c, s >@ s' >:: T (Ret (ty', Some newid))
   | Ret None -> c, [T (Ret (Void, None))]
   | Decl v -> cmp_decl c v
   | Assn (n1, n2) ->
@@ -384,21 +393,23 @@ let rec cmp_stmt (c:Ctxt.t) (rt:Ll.ty) (stmt:Ast.stmt node) : Ctxt.t * stream =
     let ty2, op2, s2 = cmp_exp c n2 in
     let ss = match ty2, op2 with
       | Ptr (Struct [I64; Array (_,x)]), Id op2' -> let newid = gensym "bitcast_" in
-        let newty = (Struct [I64; Array (0,x)]) in print_string ("\nCase 1\n");
-        [I (newid, Bitcast (ty2, Id op2', Ptr newty))] >:: I (id, Store(Ptr newty, Id newid, op1))
+        let ty1' = match ty1 with
+          | Ptr (Ptr x) -> Ptr x
+          | _           -> ty1 in
+        s2 >:: I (newid, Bitcast (ty2, Id op2', ty1')) >:: I (id, Store(ty1', Id newid, op1))
       | Ptr (Ptr (Struct [I64; Array (i,x)])), Id op2' -> let newid = gensym "bitcast_" in
         let ty2' = Ptr (Struct [I64; Array (i,x)]) in
         let ty1' = match ty1 with
           | Ptr (Ptr x) -> Ptr x
           | _           -> ty1 in
-        [ I (newid, Load (ty2, op2))
+        s2 >@ [ I (newid, Load (ty2, op2))
         ; I (newid ^ "_", Bitcast (ty2', Id newid, ty1'))
         ; I (id, Store(ty1', Id (newid ^ "_"), op1)) ]
       | Ptr _,_ -> let ty2, op2, s2 = cmp_op (ty2, op2, s2) in
         s2 >:: I (id, Store(ty2, op2, op1))
       | _       -> let ty2, op2, s2 = cmp_op (ty2, op2, s2) in
-        [I (id, Store(ty2, op2, op1))] in
-    c, ss @ s2 @ s1
+        s2 >:: I (id, Store(ty2, op2, op1)) in
+    c, ss @ s1
   | While (e, lst) -> cmp_while c (e,lst)
   | SCall (e, lst) ->
     let ty, op, s = cmp_exp c e in

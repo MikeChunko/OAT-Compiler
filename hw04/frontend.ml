@@ -207,16 +207,22 @@ let rec cmp_exp (c:Ctxt.t) (exp:Ast.exp node) : Ll.ty * Ll.operand * stream =
         map_helper tl (lst @ [ty,op]) (ss @ s)
       | []    -> lst, ss in
     map_helper exps [] [] in
-  let map_cmp_op (lst:(Ll.ty * Ll.operand) list) (s:stream) : (Ll.ty * Ll.operand) list * stream =
-    let rec map_helper (lst:(Ll.ty * Ll.operand) list) (lst':(Ll.ty * Ll.operand) list) (s:stream) =
+  let map_cmp_op (lst:(Ll.ty * Ll.operand) list) (s:stream) (retlst:(Ll.ty list) option): (Ll.ty * Ll.operand) list * stream =
+    let retlst_next (retlst:(Ll.ty list) option) =
+      match retlst with
+      | Some lst -> Some (List.tl lst)
+      | None     -> None in
+    let rec map_helper (lst:(Ll.ty * Ll.operand) list) (lst':(Ll.ty * Ll.operand) list) (s:stream) (retlst:(Ll.ty list) option) =
       match lst with
       | (ty,op)::tl ->
-        (match ty with
-        | Ptr (Array _) -> map_helper tl (lst' @ [ty,op]) s
+        (match ty, retlst with
+        | Ptr (Array _), _ -> map_helper tl (lst' @ [ty,op]) s (retlst_next retlst)
+        | Ptr (Struct [I64; Array _ ]), Some (Ptr(Struct[I64;Array _])::rettl) ->
+          map_helper tl (lst' @ [ty,op]) s (Some rettl)
         | _             -> let ty', op', s' = cmp_op (ty,op,[]) in
-          map_helper tl  (lst' @ [ty',op']) (s >@ s'))
+          map_helper tl  (lst' @ [ty',op']) (s >@ s') (retlst_next retlst))
       | []          -> lst', s in
-    map_helper lst [] s in
+    map_helper lst [] s retlst in
   let map_bitcast (lst:(Ll.ty * Ll.operand) list) (s:stream) (tylist:Ll.ty list) : (Ll.ty * Ll.operand) list * stream =
     let rec map_helper (lst:(Ll.ty * Ll.operand) list) (lst':(Ll.ty * Ll.operand) list) (s:stream) (tylist:Ll.ty list) =
       match lst, tylist with
@@ -236,7 +242,7 @@ let rec cmp_exp (c:Ctxt.t) (exp:Ast.exp node) : Ll.ty * Ll.operand * stream =
     Ptr (Array (len, I8)), Gid newid, [G (newid, (Array (len, I8), GString s))]
   | CArr (ty,es)  -> let newid = gensym "array_" in
     let args', ss' = map_cmp_exp c es in
-    let args, ss = map_cmp_op args' ss' in
+    let args, ss = map_cmp_op args' ss' None in
     let newty = Struct [I64; Array (List.length es, cmp_ty ty)] in
     let rec array_init (args':(Ll.ty * Ll.operand) list) (args:(Ll.ty * Ll.operand) list) (index:int64) =
       match args', args with
@@ -261,7 +267,7 @@ let rec cmp_exp (c:Ctxt.t) (exp:Ast.exp node) : Ll.ty * Ll.operand * stream =
         array_init [] tl (Int64.add index 1L)
       | _ -> [] in
     let initid = gensym "array_init_" in
-    let s1 = [I (initid, Store(I64, Const (Int64.of_int (List.length es)), Id initid))] @ 
+    let s1 = [I (initid, Store(I64, Const (Int64.of_int (List.length es)), Id initid))] @
       [I (initid, Gep(Ptr newty, Id newid, [Const 0L; Const 0L]))] in
     Ptr newty, Id newid, [I (newid, Alloca (newty))] >@ ss >@ (array_init args' args 0L) >@ s1
   | NewArr (ty,e) -> let newid = gensym "array_" in
@@ -306,7 +312,7 @@ let rec cmp_exp (c:Ctxt.t) (exp:Ast.exp node) : Ll.ty * Ll.operand * stream =
       | Ptr (Fun (tylst, ty')) -> tylst, ty'
       | _                      -> failwith "cmp_exp: call: Not a function" in
     let args, ss = map_cmp_exp c es in
-    let args, ss = map_cmp_op args ss in
+    let args, ss = map_cmp_op args ss (Some tylst) in
     let args, ss = map_bitcast args ss tylst in
     let retty', newid', s1 = match retty with
       | Ptr I8 -> let newid' = gensym "call_" in
@@ -327,6 +333,18 @@ let rec cmp_exp (c:Ctxt.t) (exp:Ast.exp node) : Ll.ty * Ll.operand * stream =
       | Neg    -> I (newid, Binop (Sub, I64, Const 0L, op))
       | Bitnot -> I (newid, Binop (Xor, I64, op, Const (-1L)))
       | Lognot -> I (newid, Icmp (Eq, I1, op, Const 0L))
+
+(* Oat builtin function context --------------------------------------------- *)
+let builtins =
+  [ "array_of_string",  cmp_rty @@ RFun ([TRef RString], RetVal (TRef(RArray TInt)))
+  ; "string_of_array",  cmp_rty @@ RFun ([TRef(RArray TInt)], RetVal (TRef RString))
+  ; "length_of_string", cmp_rty @@ RFun ([TRef RString],  RetVal TInt)
+  ; "string_of_int",    cmp_rty @@ RFun ([TInt],  RetVal (TRef RString))
+  ; "string_cat",       cmp_rty @@ RFun ([TRef RString; TRef RString], RetVal (TRef RString))
+  ; "print_string",     cmp_rty @@ RFun ([TRef RString],  RetVoid)
+  ; "print_int",        cmp_rty @@ RFun ([TInt],  RetVoid)
+  ; "print_bool",       cmp_rty @@ RFun ([TBool], RetVoid)
+  ]
 
 (* Compile a statement in context c with return typ rt. Return a new context,
    possibly extended with new local bindings, and the instruction stream
@@ -382,7 +400,7 @@ let rec cmp_stmt (c:Ctxt.t) (rt:Ll.ty) (stmt:Ast.stmt node) : Ctxt.t * stream =
     let cbr = [T (Cbr (op, loop_label, end_label))] in
     c, L end_label :: entry_br @ block @ L loop_label :: cbr @ s @ L start_label :: entry_br in
   match stmt.elt with
-  | Ret (Some e) ->
+  | Ret (Some e) -> (*Ctxt.print c;*)
     let rec array_cleanup (ty:Ll.ty) =
       match ty with
       | Ptr (Struct [I64; Array (_,t)]) -> Ptr (Struct [I64; Array (0, array_cleanup t)])
@@ -423,21 +441,26 @@ let rec cmp_stmt (c:Ctxt.t) (rt:Ll.ty) (stmt:Ast.stmt node) : Ctxt.t * stream =
     c, ss @ s1
   | While (e, lst) -> cmp_while c (e,lst)
   | SCall (e, lst) ->
-    let ty, op, s1 =  match (List.hd lst).elt with
-      | CStr str -> cmp_exp c (List.hd lst)
-      | NewArr _ -> failwith "Scall: CArr unimplemented"
-      | Id _ -> failwith "SCall: Id unimplemented"
-      | Index _ -> failwith "SCall: Index unimplemented"
-      | Call _ -> failwith "SCall: Call unimplemented"
-      | _ -> failwith "SCall: Unimplemented type passed" in
-    let str_id = gensym "print_str_" in
+    let func = match e.elt with
+      | Id id -> id
+      | _     -> failwith "Invalid SCall function" in
+    let functy = match List.assoc func builtins with
+      | Fun ([functy], Void) -> functy
+      | _                    -> failwith "Invalid SCall function" in
+    let ty, op, s1 = cmp_exp c (List.hd lst) in
+    let ty, op, s1 = match ty with
+      | Ptr (Ptr _) -> cmp_op (ty, op, s1)
+      | Ptr I64
+      | Ptr I1      -> cmp_op (ty, op, s1)
+      | _           -> ty,op,s1 in
+    let str_id = gensym func in
     let s2 = match ty with
       | Array _ -> let newid = gensym "scall_" in
         [I (newid, Gep (ty, op, [Const 0L]))] >@
-        [I (str_id, Bitcast (ty, Id newid, Ptr I8))]
-      | _ -> [I (str_id, Bitcast (ty, op, Ptr I8))] in
+        [I (str_id, Bitcast (ty, Id newid, functy))]
+      | _       -> [I (str_id, Bitcast (ty, op, functy))] in
     c, s1 >@ s2 >::
-    I (gensym "print_string", Call(Void, Gid "print_string", [Ptr I8, Id str_id]))
+    I (gensym func, Call(Void, Gid func, [functy, Id str_id]))
 
   | If (e, then_lst, else_lst) ->
     let (ty, op, s) = cmp_op (cmp_exp c e) in
@@ -500,7 +523,7 @@ let cmp_global_ctxt (c:Ctxt.t) (p:Ast.prog) : Ctxt.t =
           | _        -> cmp_rty ty)
         | CBool _       -> I1
         | CInt _        -> I64
-        | CStr s        -> Ptr (Array (String.length s + 1, I8))
+        | CStr s        -> (Array (String.length s + 1, I8))
         | CArr (ty, es) -> Ptr (Struct [I64; Array (List.length es, cmp_ty ty)])
         | NewArr _      -> failwith "Unimplemented global NewArr"
         | _             -> failwith "Unimplemented global type") in
@@ -579,18 +602,6 @@ let rec cmp_gexp (c:Ctxt.t) (e:Ast.exp node) : Ll.gdecl * (Ll.gid * Ll.gdecl) li
 (* Oat internals function context ------------------------------------------- *)
 let internals = [
   "oat_alloc_array",         Ll.Fun ([I64], Ptr I64)
-  ]
-
-(* Oat builtin function context --------------------------------------------- *)
-let builtins =
-  [ "array_of_string",  cmp_rty @@ RFun ([TRef RString], RetVal (TRef(RArray TInt)))
-  ; "string_of_array",  cmp_rty @@ RFun ([TRef(RArray TInt)], RetVal (TRef RString))
-  ; "length_of_string", cmp_rty @@ RFun ([TRef RString],  RetVal TInt)
-  ; "string_of_int",    cmp_rty @@ RFun ([TInt],  RetVal (TRef RString))
-  ; "string_cat",       cmp_rty @@ RFun ([TRef RString; TRef RString], RetVal (TRef RString))
-  ; "print_string",     cmp_rty @@ RFun ([TRef RString],  RetVoid)
-  ; "print_int",        cmp_rty @@ RFun ([TInt],  RetVoid)
-  ; "print_bool",       cmp_rty @@ RFun ([TBool], RetVoid)
   ]
 
 (* Compile a OAT program to LLVMlite *)

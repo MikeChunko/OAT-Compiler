@@ -251,11 +251,15 @@ let rec cmp_exp (c:Ctxt.t) (exp:Ast.exp node) : Ll.ty * Ll.operand * stream =
         | Struct [I64; Array (i,x)] ->
           let newty' = Struct [I64; Array (0,x)] in
           let previd' = gensym "array_init_" in
-          (*[I (previd''', Load (newty, Id newid))] >@*)
           [I (previd, Gep (Ptr newty, Id newid, [Const 0L; Const 1L; Const index]))] >@
-          (*[I (previd', Load (Ptr (Ptr newty'), Id previd))] >@*)
           [I (previd', Bitcast (Ptr ty1, op', Ptr newty'))] >@
           [I (gensym "array_init", Store (Ptr newty', Id previd', Id previd))] >@
+          array_init tl' tl (Int64.add index 1L)
+        | Ptr (Array (i, I8)) -> print_string ("IN STRING CASE WITH " ^ (string_of_operand op) ^ "\n");
+          let previd' = gensym "array_init_" in
+          [I (previd, Gep (Ptr newty, Id newid, [Const 0L; Const 1L; Const index]))] >@
+          [I (previd', Bitcast (ty1, op, Ptr I8))] >@
+          [I (gensym "array_init", Store (Ptr I8, Id previd', Id previd))] >@
           array_init tl' tl (Int64.add index 1L)
         | _ ->
           [I (previd, Gep (Ptr newty, Id newid, [Const 0L; Const 1L; Const index]))] >@
@@ -449,10 +453,11 @@ let rec cmp_stmt (c:Ctxt.t) (rt:Ll.ty) (stmt:Ast.stmt node) : Ctxt.t * stream =
       | _                    -> failwith "Invalid SCall function" in
     let ty, op, s1 = cmp_exp c (List.hd lst) in
     let ty, op, s1 = match ty with
-      | Ptr (Ptr _) -> cmp_op (ty, op, s1)
+      | Ptr (Ptr I8) -> print_string ((string_of_operand op) ^ " CASE 0\n");cmp_op (ty, op, s1)
+      | Ptr (Ptr t)  -> print_string ((string_of_operand op) ^ " CASE 1\n");Ptr t, op, s1
       | Ptr I64
-      | Ptr I1      -> cmp_op (ty, op, s1)
-      | _           -> ty,op,s1 in
+      | Ptr I1       -> print_string ((string_of_operand op) ^ " CASE 2\n");cmp_op (ty, op, s1)
+      | _            -> print_string ((string_of_operand op) ^ " CASE 3\n");ty,op,s1 in
     let str_id = gensym func in
     let s2 = match ty with
       | Array _ -> let newid = gensym "scall_" in

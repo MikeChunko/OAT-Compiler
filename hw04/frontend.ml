@@ -255,7 +255,7 @@ let rec cmp_exp (c:Ctxt.t) (exp:Ast.exp node) : Ll.ty * Ll.operand * stream =
           [I (previd', Bitcast (Ptr ty1, op', Ptr newty'))] >@
           [I (gensym "array_init", Store (Ptr newty', Id previd', Id previd))] >@
           array_init tl' tl (Int64.add index 1L)
-        | Ptr (Array (i, I8)) -> print_string ("IN STRING CASE WITH " ^ (string_of_operand op) ^ "\n");
+        | Ptr (Array (i, I8)) ->
           let previd' = gensym "array_init_" in
           [I (previd, Gep (Ptr newty, Id newid, [Const 0L; Const 1L; Const index]))] >@
           [I (previd', Bitcast (ty1, op, Ptr I8))] >@
@@ -409,11 +409,20 @@ let rec cmp_stmt (c:Ctxt.t) (rt:Ll.ty) (stmt:Ast.stmt node) : Ctxt.t * stream =
       match ty with
       | Ptr (Struct [I64; Array (_,t)]) -> Ptr (Struct [I64; Array (0, array_cleanup t)])
       | _ -> ty in
-    let ty, op, s = cmp_op (cmp_exp c e) in
+    let ty, op, s = cmp_exp c e in
+    let ty, op, s = match ty, op with
+      | Ptr (Ptr t), Id id ->
+        if String.length id < 5 || (String.sub id 0 5 <> "_call")
+        then cmp_op (ty, op, s)
+        else Ptr t, op, s
+      | Ptr (Array _), _ -> ty, op, s
+      | _ -> cmp_op (ty, op, s) in
     let ty', newid, s' = match ty with
       | Ptr (Struct [I64; Array _]) -> let newid = gensym "Ret_" in
         let ty' = (array_cleanup ty) in
         ty', Ll.Id newid, [I (newid, Bitcast (ty, op, ty'))]
+      | Ptr (Array (_, I8)) -> let newid = gensym "Ret_" in
+        Ptr I8, Ll.Id newid, [I (newid, Bitcast (ty, op, Ptr I8))]
       | _                           -> ty, op, [] in
     c, s >@ s' >:: T (Ret (ty', Some newid))
   | Ret None -> c, [T (Ret (Void, None))]
@@ -453,11 +462,17 @@ let rec cmp_stmt (c:Ctxt.t) (rt:Ll.ty) (stmt:Ast.stmt node) : Ctxt.t * stream =
       | _                    -> failwith "Invalid SCall function" in
     let ty, op, s1 = cmp_exp c (List.hd lst) in
     let ty, op, s1 = match ty with
-      | Ptr (Ptr I8) -> print_string ((string_of_operand op) ^ " CASE 0\n");cmp_op (ty, op, s1)
-      | Ptr (Ptr t)  -> print_string ((string_of_operand op) ^ " CASE 1\n");Ptr t, op, s1
+      | Ptr (Ptr I8)
+      | Ptr (Ptr (Array (0, I8)))  -> (match op with
+        | Id id ->
+          if String.length id < 5 || (String.sub id 0 5 <> "_call")
+          then cmp_op (ty, op, s1)
+          else Ptr (Array (0, I8)), op, s1
+        | _ -> cmp_op (ty, op, s1))
+      | Ptr (Ptr t)  -> Ptr t, op, s1
       | Ptr I64
-      | Ptr I1       -> print_string ((string_of_operand op) ^ " CASE 2\n");cmp_op (ty, op, s1)
-      | _            -> print_string ((string_of_operand op) ^ " CASE 3\n");ty,op,s1 in
+      | Ptr I1       -> cmp_op (ty, op, s1)
+      | _            -> ty,op,s1 in
     let str_id = gensym func in
     let s2 = match ty with
       | Array _ -> let newid = gensym "scall_" in
@@ -466,7 +481,6 @@ let rec cmp_stmt (c:Ctxt.t) (rt:Ll.ty) (stmt:Ast.stmt node) : Ctxt.t * stream =
       | _       -> [I (str_id, Bitcast (ty, op, functy))] in
     c, s1 >@ s2 >::
     I (gensym func, Call(Void, Gid func, [functy, Id str_id]))
-
   | If (e, then_lst, else_lst) ->
     let (ty, op, s) = cmp_op (cmp_exp c e) in
     let label = gensym "lbl_" in

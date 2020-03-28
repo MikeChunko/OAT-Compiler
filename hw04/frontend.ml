@@ -211,7 +211,7 @@ let rec cmp_exp (c:Ctxt.t) (exp:Ast.exp node) : Ll.ty * Ll.operand * stream =
     let rec map_helper (lst:(Ll.ty * Ll.operand) list) (lst':(Ll.ty * Ll.operand) list) (s:stream) =
       match lst with
       | (ty,op)::tl ->
-        (match ty with 
+        (match ty with
         | Ptr (Array _) -> map_helper tl (lst' @ [ty,op]) s
         | _             -> let ty', op', s' = cmp_op (ty,op,[]) in
           map_helper tl  (lst' @ [ty',op']) (s >@ s'))
@@ -221,8 +221,8 @@ let rec cmp_exp (c:Ctxt.t) (exp:Ast.exp node) : Ll.ty * Ll.operand * stream =
     let rec map_helper (lst:(Ll.ty * Ll.operand) list) (lst':(Ll.ty * Ll.operand) list) (s:stream) (tylist:Ll.ty list) =
       match lst, tylist with
       | (ty1,op1)::tl1, ty2::tl2 -> let newid = gensym "call_bitcast" in
-        let s' = I (newid, Bitcast (ty1, op1, ty2)) in
-        map_helper tl1 (lst' @ [ty2, Id newid]) (s >:: s') tl2
+            let s' = I (newid, Bitcast (ty1, op1, ty2)) in
+            map_helper tl1 (lst' @ [ty2, Id newid]) (s >:: s') tl2
       | _                        -> lst', s in
     map_helper lst [] s tylist in
   match exp.elt with
@@ -260,7 +260,10 @@ let rec cmp_exp (c:Ctxt.t) (exp:Ast.exp node) : Ll.ty * Ll.operand * stream =
         [I (gensym "array_init", Store (ty1, op, Id previd))] >@
         array_init [] tl (Int64.add index 1L)
       | _ -> [] in
-    Ptr newty, Id newid, [I (newid, Alloca (newty))] >@ ss >@ (array_init args' args 0L)
+    let initid = gensym "array_init_" in
+    let s1 = [I (initid, Store(I64, Const (Int64.of_int (List.length es)), Id initid))] @ 
+      [I (initid, Gep(Ptr newty, Id newid, [Const 0L; Const 0L]))] in
+    Ptr newty, Id newid, [I (newid, Alloca (newty))] >@ ss >@ (array_init args' args 0L) >@ s1
   | NewArr (ty,e) -> let newid = gensym "array_" in
     let newid2 = gensym "array_" in
     let ty1,op1,s1 = cmp_op (cmp_exp c e) in
@@ -305,7 +308,12 @@ let rec cmp_exp (c:Ctxt.t) (exp:Ast.exp node) : Ll.ty * Ll.operand * stream =
     let args, ss = map_cmp_exp c es in
     let args, ss = map_cmp_op args ss in
     let args, ss = map_bitcast args ss tylst in
-    retty, Id newid, ss >:: I (newid, Call (retty, op, args))
+    let retty', newid', s1 = match retty with
+      | Ptr I8 -> let newid' = gensym "call_" in
+        let newty = Ptr (Array (0, I8)) in
+        Ptr newty, newid', [I (newid', Bitcast (retty, Id newid, newty))]
+      | _      -> retty, newid, [] in
+    retty', Id newid', ss >:: I (newid, Call (retty, op, args)) >@ s1
   | Bop (b,e1,e2) -> let newid = gensym "bop_" in
     let (t1, t2, t3) = typ_of_binop b in
     let (ty1, op1, s1), (ty2, op2, s2) = cmp_op (cmp_exp c e1), cmp_op (cmp_exp c e2) in
@@ -357,9 +365,10 @@ let rec cmp_stmt (c:Ctxt.t) (rt:Ll.ty) (stmt:Ast.stmt node) : Ctxt.t * stream =
       else ty, [], op in
     match ty' with
     | Ptr (Struct [I64; Array (i, x)]) -> (match op' with
-       | Id op' -> (*print_string ("Array is: " ^ op');*) Ctxt.add c (fst v) (Ptr ty', Id uid), s >:: I (uid, Alloca ty') >::
+       | Id op' -> Ctxt.add c (fst v) (Ptr ty', Id uid), s >:: I (uid, Alloca ty') >::
          I (uid, Store (ty', Id op', Id uid) )
        | _      -> failwith "cmp_decl: Unexpected error in array")
+    | Ptr (Ptr (Array (i,x))) -> Ctxt.add c (fst v) (ty', Id uid), [I (uid, Alloca (Ptr (Array (i,x))))] >@ s >:: I (uid, Store (Ptr (Array (i,x)), op, Id uid))
     | Ptr t -> Ctxt.add c (fst v) (Ptr t, Id uid), [I (uid, Alloca t)] >@ snew >:: I (uid, Store (tynew, opnew, Id uid))
     | _     -> Ctxt.add c (fst v) (Ptr ty', Id uid), s >:: I (uid, Alloca ty') >@ s' >::I (uid, Store (ty', op', Id uid)) in
   let cmp_while c (e, lst) =
@@ -425,7 +434,7 @@ let rec cmp_stmt (c:Ctxt.t) (rt:Ll.ty) (stmt:Ast.stmt node) : Ctxt.t * stream =
     let s2 = match ty with
       | Array _ -> let newid = gensym "scall_" in
         [I (newid, Gep (ty, op, [Const 0L]))] >@
-        [I (str_id, Bitcast (ty, Id newid, Ptr I8))] 
+        [I (str_id, Bitcast (ty, Id newid, Ptr I8))]
       | _ -> [I (str_id, Bitcast (ty, op, Ptr I8))] in
     c, s1 >@ s2 >::
     I (gensym "print_string", Call(Void, Gid "print_string", [Ptr I8, Id str_id]))

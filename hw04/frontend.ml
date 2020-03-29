@@ -198,16 +198,35 @@ let cmp_op ((ty:Ll.ty), (op:Ll.operand), (s:stream)) : Ll.ty * Ll.operand * stre
      that compiles an expression and optionally inserts a bitcast to the
      desired Ll type. This is useful for dealing with OAT identifiers that
      correspond to gids that don't quite have the type you want *)
-let rec cmp_exp (c:Ctxt.t) (exp:Ast.exp node) : Ll.ty * Ll.operand * stream =
-  let map_cmp_exp (c:Ctxt.t) (exps:Ast.exp node list) : (Ll.ty * Ll.operand) list * stream =
+
+let rec map_cmp_exp (c:Ctxt.t) (exps:Ast.exp node list) : (Ll.ty * Ll.operand) list * stream =
     let rec map_helper (exps:Ast.exp node list) (lst:(Ll.ty * Ll.operand) list) (ss:stream) =
       match exps with
       | e::tl ->
         let ty, op, s = cmp_exp c e in
         map_helper tl (lst @ [ty,op]) (ss @ s)
       | []    -> lst, ss in
-    map_helper exps [] [] in
-  let map_cmp_op (lst:(Ll.ty * Ll.operand) list) (s:stream) (retlst:(Ll.ty list) option): (Ll.ty * Ll.operand) list * stream =
+    map_helper exps [] []
+and
+cmp_call (c:Ctxt.t) (e: Ast.exp Ast.node) (es: Ast.exp Ast.node list) : Ll.ty * Ll.operand * stream  =
+    let newid = gensym "call_" in
+    let ty, op = match e.elt with
+      | Id id ->  Ctxt.lookup id c
+      | _     -> failwith "cmp_exp: call: Invalid function name" in
+    let tylst, retty = match ty with
+      | Ptr (Fun (tylst, ty')) -> tylst, ty'
+      | _                      -> failwith "cmp_exp: call: Not a function" in
+    let args, ss = map_cmp_exp c es in
+    let args, ss = map_cmp_op args ss (Some tylst) in
+    let args, ss = map_bitcast args ss tylst in
+    let retty', newid', s1 = match retty with
+      | Ptr I8 -> let newid' = gensym "call_" in
+        let newty = Ptr (Array (0, I8)) in
+        Ptr newty, newid', [I (newid', Bitcast (retty, Id newid, newty))]
+      | _      -> retty, newid, [] in
+    retty', Id newid', ss >:: I (newid, Call (retty, op, args)) >@ s1
+and
+map_cmp_op (lst:(Ll.ty * Ll.operand) list) (s:stream) (retlst:(Ll.ty list) option): (Ll.ty * Ll.operand) list * stream =
     let retlst_next (retlst:(Ll.ty list) option) =
       match retlst with
       | Some lst -> Some (List.tl lst)
@@ -222,15 +241,25 @@ let rec cmp_exp (c:Ctxt.t) (exp:Ast.exp node) : Ll.ty * Ll.operand * stream =
         | _             -> let ty', op', s' = cmp_op (ty,op,[]) in
           map_helper tl  (lst' @ [ty',op']) (s >@ s') (retlst_next retlst))
       | []          -> lst', s in
-    map_helper lst [] s retlst in
-  let map_bitcast (lst:(Ll.ty * Ll.operand) list) (s:stream) (tylist:Ll.ty list) : (Ll.ty * Ll.operand) list * stream =
+    map_helper lst [] s retlst
+and map_bitcast (lst:(Ll.ty * Ll.operand) list) (s:stream) (tylist:Ll.ty list) : (Ll.ty * Ll.operand) list * stream =
     let rec map_helper (lst:(Ll.ty * Ll.operand) list) (lst':(Ll.ty * Ll.operand) list) (s:stream) (tylist:Ll.ty list) =
       match lst, tylist with
       | (ty1,op1)::tl1, ty2::tl2 -> let newid = gensym "call_bitcast" in
             let s' = I (newid, Bitcast (ty1, op1, ty2)) in
             map_helper tl1 (lst' @ [ty2, Id newid]) (s >:: s') tl2
       | _                        -> lst', s in
-    map_helper lst [] s tylist in
+    map_helper lst [] s tylist
+and cmp_exp (c:Ctxt.t) (exp:Ast.exp node) : Ll.ty * Ll.operand * stream =
+  let map_cmp_exp (c:Ctxt.t) (exps:Ast.exp node list) : (Ll.ty * Ll.operand) list * stream =
+    let rec map_helper (exps:Ast.exp node list) (lst:(Ll.ty * Ll.operand) list) (ss:stream) =
+      match exps with
+      | e::tl ->
+        let ty, op, s = cmp_exp c e in
+        map_helper tl (lst @ [ty,op]) (ss @ s)
+      | []    -> lst, ss in
+    map_helper exps [] [] in
+  
   match exp.elt with
   | CNull ty      -> cmp_rty ty, Null, []
   | CBool b       -> (match b with
@@ -330,22 +359,7 @@ let rec cmp_exp (c:Ctxt.t) (exp:Ast.exp node) : Ll.ty * Ll.operand * stream =
         Ptr ty', s1 >@ [I (newid, Gep (ty1, op1, [Const 0L; op2]))]
       | _                                       -> failwith "cmp_exp: Index: Invalid type to index") in
     ty', Id newid, s2 >@ s'
-  | Call (e,es)   -> let newid = gensym "call_" in
-    let ty, op = match e.elt with
-      | Id id -> Ctxt.lookup id c
-      | _     -> failwith "cmp_exp: call: Invalid function name" in
-    let tylst, retty = match ty with
-      | Ptr (Fun (tylst, ty')) -> tylst, ty'
-      | _                      -> failwith "cmp_exp: call: Not a function" in
-    let args, ss = map_cmp_exp c es in
-    let args, ss = map_cmp_op args ss (Some tylst) in
-    let args, ss = map_bitcast args ss tylst in
-    let retty', newid', s1 = match retty with
-      | Ptr I8 -> let newid' = gensym "call_" in
-        let newty = Ptr (Array (0, I8)) in
-        Ptr newty, newid', [I (newid', Bitcast (retty, Id newid, newty))]
-      | _      -> retty, newid, [] in
-    retty', Id newid', ss >:: I (newid, Call (retty, op, args)) >@ s1
+  | Call (e,es)   -> (cmp_call c e es)
   | Bop (b,e1,e2) -> let newid = gensym "bop_" in
     let (t1, t2, t3) = typ_of_binop b in
     let (ty1, op1, s1), (ty2, op2, s2) = cmp_op (cmp_exp c e1), cmp_op (cmp_exp c e2) in
@@ -479,9 +493,13 @@ let rec cmp_stmt (c:Ctxt.t) (rt:Ll.ty) (stmt:Ast.stmt node) : Ctxt.t * stream =
     let func = match e.elt with
       | Id id -> id
       | _     -> failwith "Invalid SCall function" in
-    let functy = match List.assoc func builtins with
-      | Fun ([functy], Void) -> functy
-      | _                    -> failwith "Invalid SCall function" in
+    begin match List.assoc_opt func builtins with
+      | None -> let (ty, op, s) = (cmp_call c e lst) in c, s
+      | Some Fun ([functy], Void) ->
+
+    let functy = match List.assoc_opt func builtins with
+      | Some Fun ([functy], Void) -> functy
+      | _                    -> Void in
     let ty, op, s1 = cmp_exp c (List.hd lst) in
     let ty, op, s1 = match ty with
       | Ptr (Ptr I8)
@@ -503,6 +521,9 @@ let rec cmp_stmt (c:Ctxt.t) (rt:Ll.ty) (stmt:Ast.stmt node) : Ctxt.t * stream =
       | _       -> [I (str_id, Bitcast (ty, op, functy))] in
     c, s1 >@ s2 >::
     I (gensym func, Call(Void, Gid func, [functy, Id str_id]))
+
+    | _ -> failwith "SCall: Invalid function passed" end
+
   | If (e, then_lst, else_lst) ->
     let (ty, op, s) = cmp_op (cmp_exp c e) in
     let label = gensym "lbl_" in

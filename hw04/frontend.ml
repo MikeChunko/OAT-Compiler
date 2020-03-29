@@ -240,47 +240,69 @@ let rec cmp_exp (c:Ctxt.t) (exp:Ast.exp node) : Ll.ty * Ll.operand * stream =
   | CStr s        -> let newid = gensym "str_" in
     let len = String.length s + 1 in
     Ptr (Array (len, I8)), Gid newid, [G (newid, (Array (len, I8), GString s))]
-  | CArr (ty,es)  -> let newid = gensym "array_" in
-    let args', ss' = map_cmp_exp c es in
-    let args, ss = map_cmp_op args' ss' None in
-    let newty = Struct [I64; Array (List.length es, cmp_ty ty)] in
-    let rec array_init (args':(Ll.ty * Ll.operand) list) (args:(Ll.ty * Ll.operand) list) (index:int64) =
-      match args', args with
-      | (ty1',op')::tl', (ty1,op)::tl -> let previd = gensym "array_init_" in
-        (match ty1 with
-        | Struct [I64; Array (i,x)] ->
-          let newty' = Struct [I64; Array (0,x)] in
-          let previd' = gensym "array_init_" in
-          [I (previd, Gep (Ptr newty, Id newid, [Const 0L; Const 1L; Const index]))] >@
-          [I (previd', Bitcast (Ptr ty1, op', Ptr newty'))] >@
-          [I (gensym "array_init", Store (Ptr newty', Id previd', Id previd))] >@
-          array_init tl' tl (Int64.add index 1L)
-        | Ptr (Array (i, I8)) ->
-          let previd' = gensym "array_init_" in
-          [I (previd, Gep (Ptr newty, Id newid, [Const 0L; Const 1L; Const index]))] >@
-          [I (previd', Bitcast (ty1, op, Ptr I8))] >@
-          [I (gensym "array_init", Store (Ptr I8, Id previd', Id previd))] >@
-          array_init tl' tl (Int64.add index 1L)
+  | CArr (ty,es)  -> (* print_string ("CArr: " ^ (string_of_int (List.length es)) ^ "\n"); *)
+    let args, ss = map_cmp_exp c es in
+    let newty = Struct [I64; Array (0, cmp_ty ty)] in
+    let rawname = gensym ("raw_array_") in
+    let arrname = gensym ("array_") in
+
+    let is_primitive = function
+    | Ll.Ptr (Ll.Struct _) -> false
+    | _ -> true
+    in
+    let is_ptr = function
+    | Ll.Ptr _ -> true
+    | _ -> false
+    in
+    let rec add_elements (es': (Ll.ty * Ll.operand) list) (ind:int64) = 
+      match es' with
+      | (ty', op')::tl -> 
+        begin match op' with
+        | Id id ->
+          if (is_primitive ty') then (
+            if (is_ptr ty') then (
+            let tempname = gensym ("temp_") in
+            let elname = gensym ("ele_") in
+            [I (tempname, Gep (Ptr newty, Id arrname, [Const 0L; Const 1L; Const ind]))] >@
+            [I (elname, Load (Ptr (cmp_ty ty), op'))] >@ add_elements tl (Int64.add ind 1L) >@
+            [I ("", Store (cmp_ty ty, Id elname, Id tempname))] >@ add_elements tl (Int64.add ind 1L)
+          )else (
+            let tempname = gensym ("temp_") in
+            let elname = gensym ("ele_") in
+            [I (tempname, Gep (Ptr newty, Id arrname, [Const 0L; Const 1L; Const ind]))] >@
+            [I ("", Store (cmp_ty ty, op', Id tempname))] >@ add_elements tl (Int64.add ind 1L))
+          )else
+            let tempname = gensym ("temp_") in
+            [I (tempname, Gep (Ptr newty, Id arrname, [Const 0L; Const 1L; Const ind]))] >@
+            [I ("", Store (cmp_ty ty, op', Id tempname))] >@ add_elements tl (Int64.add ind 1L)
+        | Gid gid -> 
+          let tempname = gensym ("temp_") in
+          let resname = gensym ("result_") in
+          [I (tempname, Gep (Ptr newty, Id arrname, [Const 0L; Const 1L; Const ind]))] >@
+          [I (resname, Bitcast (ty', op', cmp_ty ty))] >@
+          [I ("", Store (cmp_ty ty, Id resname, Id tempname))] >@ add_elements tl (Int64.add ind 1L)
         | _ ->
-          [I (previd, Gep (Ptr newty, Id newid, [Const 0L; Const 1L; Const index]))] >@
-          [I (gensym "array_init", Store (ty1, op, Id previd))] >@
-          array_init [] tl (Int64.add index 1L))
-      | _,(ty1,op)::tl -> let previd = gensym "array_init_" in
-        [I (previd, Gep (Ptr newty, Id newid, [Const 0L; Const 1L; Const index]))] >@
-        [I (gensym "array_init", Store (ty1, op, Id previd))] >@
-        array_init [] tl (Int64.add index 1L)
-      | _ -> [] in
-    let initid = gensym "array_init_" in
-    let s1 = [I (initid, Store(I64, Const (Int64.of_int (List.length es)), Id initid))] @
-      [I (initid, Gep(Ptr newty, Id newid, [Const 0L; Const 0L]))] in
-    Ptr newty, Id newid, [I (newid, Alloca (newty))] >@ ss >@ (array_init args' args 0L) >@ s1
+          let tempname = gensym ("temp_") in
+          [I (tempname, Gep (Ptr newty, Id arrname, [Const 0L; Const 1L; Const ind]))] >@
+          [I ("", Store (cmp_ty ty, op', Id tempname))] >@ add_elements tl (Int64.add ind 1L)
+        end
+      | _ -> []
+    in
+    
+    Ptr newty, Id arrname, ss >@
+    [I (rawname, Call(Ptr I64, Gid "oat_alloc_array", [I64, Const (Int64.of_int (List.length es))]))] >@
+    [I (arrname, Bitcast(Ptr I64, Id rawname, Ptr newty))] >@
+    (* 
+    [I (tempname, Gep (Ptr newty, Id arrname, [Const 0L; Const 1L; Const index]))] >@
+    [I ("cringe", Store (cmp_ty ty, op', Id tempname))] *)
+    add_elements args 0L
   | NewArr (ty,e) -> let newid = gensym "array_" in
     let newid2 = gensym "array_" in
     let ty1,op1,s1 = cmp_op (cmp_exp c e) in
     let i = match op1 with
       | Const x -> Int64.to_int x
       | _       -> 0 in
-    let newty = Struct [I64; Array (i, cmp_ty ty)] in
+    let newty = Struct [I64; Array (0, cmp_ty ty)] in
     let rec array_init  (i:int) (index:int64) =
       if i = 0 then []
       else (let previd = gensym "array_init_" in

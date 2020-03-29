@@ -1,0 +1,64 @@
+int power (int n, int exp) {
+    if (exp == 0) {
+        return 1;
+    }
+
+    return n * (power (n, exp - 1));
+}
+
+int tetrate (int n, int exp) {
+    if (exp == 0) {
+        return 1;
+    }
+
+    return power (n, tetrate (n, exp - 1));
+}
+
+int[] map (int[] fst, int[] snd, int len) {
+    for (var i = 0; i < len; i = i + 1;) {
+        fst[i] = tetrate (fst[i], snd[i]);
+    }
+    return fst;
+}
+
+int program (int argc, string[] argv) {
+    var check = 0;
+    if (power (2,2) == 4 & power (3,1) == 3 & power (99, 0) == 1) {
+        check = 1;
+    }
+    if (check != 1) {
+        return 0;
+    }
+
+    check = 0;
+
+    if (tetrate (2,2) == 4 & tetrate (1,1) == 1 & tetrate (2,3) == 16
+        & tetrate (2,4) == 65536 & tetrate (3,2) == 27
+        & tetrate (4,2) == 256 & tetrate (5,2) == 3125
+        & tetrate (6,2) == 46656) {
+        check = 1;
+    }
+
+    if (check != 1) {
+        return 0;
+    }
+
+    var bases = new int[] {2, 1, 2, 2, 3, 4, 5, 6};
+    var exps = new int[] {2, 1, 3, 4, 2, 2, 2, 2};
+    var results = map(bases, exps, 8);
+    var expected = new int[] {4, 1, 16, 65536, 27, 256, 3125, 46656};
+
+    for (var i = 0; i < 8; i = i + 1;) {
+        if (results[i] != expected[i]) {
+            check = 0;
+        }
+    }
+
+    if (check == 1) {
+        print_string ("all clear");
+    } else {
+        print_string ("not good");
+    }
+
+    return 0;
+}

@@ -1,0 +1,87 @@
+/**********************************************************************
+ * Jared Pincus, Owen Zila
+ * I pledge my honor that I have abided by the Stevens Honor System. 
+ * Inversion counter:
+ *   counts number of inversions in an array in n*lg(n) time.
+ *********************************************************************/
+
+/* Standard mergesort procedure,
+ * but add to total number of inversions
+ * each time a swap occurs while merging */
+int mergesort(int[] array, int[] scratch, int low, int high) {
+    /* Base case */
+    if (low >= high) { return 0; }
+
+    /* Halfway between array bounds */
+    var mid = low + ((high - low) >> 2);
+
+    /* Iterators for each half of array */
+    var lo = low;
+    var hi = mid + 1;
+
+    /* Recursive calls to each half of array */
+    var out = mergesort(array, scratch, low, mid)
+            + mergesort(array, scratch, hi, high);
+
+    /* Merge procedure: iterate over halves,
+     * copy smallest to largest values into scratch */
+    for (var k = low; k <= high; k = k + 1;) {
+        if (lo <= mid & (hi > high | array[lo] <= array[hi])) {
+            scratch[k] = array[lo];
+            out = out + hi - mid - 1;
+            lo = lo + 1;
+        } else {
+            scratch[k] = array[hi];
+            hi = hi + 1;
+        }
+    }
+
+    /* Write modified part of scratch back to array */
+    for (var i = low; i <= high; i = i + 1;) {
+        array[i] = scratch[i];
+    }
+
+    /* Return total number of inversions found recursively */
+    return out;
+}
+
+/* Kick off mergesort; includes creation of scratch array */
+int count_inversions(int[] array, int length) {
+    return mergesort(array, new int[length], 0, length - 1);
+}
+
+/* Convert string to int
+ * Assumes valid input matching "-?[0-9]+" */
+int atoi(string s) {
+    var len = length_of_string(s);
+    var digits = array_of_string(s);
+
+    /* Check if number is negative */
+    var negative = (digits[0] == 45);
+
+    var out = 0;
+
+    /* If number is negative, start looking at digits 1 position later */
+    var i = 0;
+    if (negative) { i = 1; }
+
+    /* Iterate over digits, multiplying accumulator 10 and adding digit each time */
+    for (; i < len; i = i + 1;) {
+        out = out * 10 + digits[i] - 48;
+    }
+
+    if (negative) { out = -out; }
+    return out;
+}
+
+/* Command line arguments are a list of 1 or more integers */
+int program(int argc, string[] argv) {
+    /* Convert all string inputs to ints; store them in an array */
+    var array = new int[argc - 1];
+    for (var i = 0; i < argc - 1; i = i + 1;) {
+        array[i] = atoi(argv[i + 1]);
+    }
+
+    /* Compute and return number of inversions */
+    return count_inversions(array, argc - 1);
+}

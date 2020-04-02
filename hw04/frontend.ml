@@ -337,6 +337,7 @@ and cmp_exp (c:Ctxt.t) (exp:Ast.exp node) : Ll.ty * Ll.operand * stream =
   | Bop (b,e1,e2) -> let newid = gensym "bop_" in
     let t1, t2, t3 = typ_of_binop b in
     let (ty1, op1, s1), (ty2, op2, s2) = cmp_op (cmp_exp c e1), cmp_op (cmp_exp c e2) in
+    let t1 = if ty1 <> t1 then ty1 else t1 in
     t3, Id newid, s2 >@ s1 >:: I (newid, cmp_binop b t1 op1 op2)
   | Uop (u,e)     -> let newid = gensym "uop_" in
     let ty1, op, s = cmp_op (cmp_exp c e) in

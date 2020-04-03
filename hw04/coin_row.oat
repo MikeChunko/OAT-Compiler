@@ -1,0 +1,32 @@
+/*
+* Jose Amezquita and Robert Schabaker
+* Coin_row problem
+* Given an array of coins returns the max amount that can be made
+* without using adjacent coins
+*/
+
+
+int max(int a, int b) {
+    var max = a;
+    if (b > a) {
+        max = b;
+    }
+    return max;
+}
+
+int coin_row(int[] coins, int n) {
+    if (n == 0) {
+        return 0;
+    }
+    if (n == 1) {
+        return coins[1];
+    }
+    return max(coins[n] + coin_row(coins, n-2), coin_row(coins, n-1));
+}
+
+int program(int argc, string[] argv) {
+    var arr = new int[]{0, 5, 1, 2, 10, 6, 2};
+    var len = 7;
+
+    return coin_row(arr, len-1);
+}

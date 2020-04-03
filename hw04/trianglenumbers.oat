@@ -1,0 +1,13 @@
+int tri(int n) {
+  var temp = 0;
+  if (n == 1) {
+     temp = 1;
+  } else {
+    temp = n + tri (n-1);
+  } 
+  return temp;
+}
+
+int program (int argc, string[] argv) {
+  return tri(6);
+}

@@ -70,11 +70,31 @@ let inversion_counter_tests =
   ; 237, [-81730;-87355;99291;5604;39179;-30213;30890;-43983;-4079;-90803;-35131;-33536;-57490;10889;-42921;44280;-57396;-96971;61723;-64373;48953;-44250;-40866;81793;-32845;27789;-32214;-81704;-97264;-60539]
   ]
 
-let student_tests = [ ("brainfuck.oat", "+++[r++l-]r.", "660") ]
+let brainfuck_tests = [ ("brainfuck.oat", "+++[r++l-]r.", "660") ]
+
+let coin_row_tests = [
+  ("coin_row.oat", "", "17")
+]
+
+let quicksort_test = [
+   ("quicksort.oat", "", string_of_int (123456789 mod 256));
+]
+
+let student_test = [
+  ("trianglenumbers.oat", "", "21")
+]
+
+let unique_char_tests1 = [
+  ("hw4programs/tim_sort.oat", "", "571921230");
+]
 
 let provided_tests : suite = [
   GradedTest("tetrate tests", 0, executed_oat_file tetrate_tests);
   GradedTest("Unique Char tests", 1, executed_oat_file (unique_char_tests));
   Test("jp-oz inversion counter", Gradedtests.executed_oat_file inversion_counter_tests);
-  GradedTest("student test",10,executed_oat_file student_tests)
+  GradedTest("brainfuck test", 10, executed_oat_file brainfuck_tests);
+  GradedTest("coin_row tests", 0, executed_oat_file coin_row_tests);
+  GradedTest("squicksort tests", 0 , executed_oat_file quicksort_test);
+  Test("triangle numbers", Gradedtests.executed_oat_file student_test);
+  GradedTest("tim sort Tests", 1, executed_oat_file (unique_char_tests1));
 ]

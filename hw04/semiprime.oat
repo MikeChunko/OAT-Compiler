@@ -1,0 +1,48 @@
+/* David Horowtiz and Alex Schlumph */
+/* Semiprime numbers are natural numbers that are products of exactly two 
+(possibly equal) prime numbers. */
+
+int mod(int a, int b)
+{
+    while(a >= b) {
+        a = a - b;
+    }
+    return a;
+}
+
+int div(int a, int b)
+{
+    var c = 0;
+    while(a >= b) {
+        a = a - b;
+        c = c + 1;
+    }
+    return c;
+}
+
+bool semiprime(int c)
+{
+    var a = 2;
+    var b = 0;
+    while (b < 3 & c != 1)
+    {
+        if (mod(c, a) == 0)
+        {
+            c = div(c, a);
+            b = b + 1;
+        } else {
+            a = a + 1;
+        }
+    }
+    return b == 2;
+}
+int program(int argc, string[] argv)
+{   
+	for (var i = 2; i < 100; i = i + 1;) {
+		if (semiprime(i)) {
+            print_int(i);
+            print_string(" ");
+        }
+    }
+	return 0;
+}

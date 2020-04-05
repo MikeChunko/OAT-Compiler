@@ -88,6 +88,31 @@ let unique_char_tests1 = [
   ("hw4programs/tim_sort.oat", "", "571921230");
 ]
 
+let array_dups = [
+  ("arrayduplicate.oat", "", "4")
+]
+
+let my_tests = [
+  ("removeAdjDuplicates.oat", "", "15")
+]
+
+let studenttests = [
+    ("quicksort1.oat", "a c e d b", "a b c d e");
+    ("countingsort1.oat", "aaaassssddddffff", "aaaaddddffffssss")
+  ]
+
+let lis_tests = [
+  ("hw4programs/longest_increasing_subsequence.oat", "", "Usage: ./executable <num 0> <num 1> ...1");
+  ("hw4programs/longest_increasing_subsequence.oat", "1 2 3 4 5", "For input [1, 2, 3, 4, 5] the longest increasing subsequence was: [1, 2, 3, 4, 5] with length 50");
+  ("hw4programs/longest_increasing_subsequence.oat", "10 9 -2 5 3 7 101 18", "For input [10, 9, -2, 5, 3, 7, 101, 18] the longest increasing subsequence was: [-2, 5, 7, 101] with length 40");
+  ("hw4programs/longest_increasing_subsequence.oat", "-100 2 78 3 4 5 -1 5 9", "For input [-100, 2, 78, 3, 4, 5, -1, 5, 9] the longest increasing subsequence was: [-100, 2, 3, 4, 5, 9] with length 60");
+]
+
+let determinant_test = [
+    ("determinant_size.oat", "94", "")
+  ]
+
+
 let provided_tests : suite = [
   GradedTest("tetrate tests", 0, executed_oat_file tetrate_tests);
   GradedTest("Unique Char tests", 1, executed_oat_file (unique_char_tests));
@@ -97,4 +122,16 @@ let provided_tests : suite = [
   GradedTest("squicksort tests", 0 , executed_oat_file quicksort_test);
   Test("triangle numbers", Gradedtests.executed_oat_file student_test);
   GradedTest("tim sort Tests", 1, executed_oat_file (unique_char_tests1));
+  Test("array duplicates", Gradedtests.executed_oat_file array_dups);
+  Test("Semiprime Test",
+  (executed_oat_file [("semiprime.oat", "", "4 6 9 10 14 15 21 22 25 26 33 34 35 38 39 46 49 51 55 57 58 62 65 69 74 77 82 85 86 87 91 93 94 95 0")]));
+  GradedTest(
+    "Student Tests",
+    0,
+    executed_oat_file my_tests
+  );
+  GradedTest("student tests", 5, executed_oat_file studenttests);
+  Test("maximum of three numbers test", executed_oat_file ["maxthree.oat", "", "26"]);
+  Test("longest increasing subsequence tests", Gradedtests.executed_oat_file lis_tests);
+  GradedTest("student tests", 0 , executed_oat_file determinant_test);
 ]

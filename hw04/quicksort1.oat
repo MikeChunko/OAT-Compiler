@@ -1,0 +1,80 @@
+int strcmp(string a, string b) {
+    var a_arr = array_of_string(a);
+    var b_arr = array_of_string(b);
+    for (var i = 0; a_arr[i] != 0 & b_arr[i] != 0; i = i + 1;) {
+        if (a_arr[i] > b_arr[i]) {
+            return -1;
+        }
+        if (a_arr[i] < b_arr[i]) {
+            return 1;
+        }
+    }
+    if (a_arr[i] > b_arr[i]) {
+        return -1;
+    }
+    if (a_arr[i] < b_arr[i]) {
+        return 1;
+    }
+    return 0;
+}
+
+void swap(string[] strs, int a, int b) {
+    var tmp = strs[a];
+    strs[a] = strs[b];
+    strs[b] = tmp;
+}
+
+int lomuto(string[] strs, int left, int right) {
+    var s = left;
+    var pivot = left;
+
+    for (var i = left+1; i <= right; i = i + 1;) {
+        var comp = strcmp(strs[i], pivot);
+        if (comp < 0) {
+            s = s + 1;
+            if (i != s) {
+                swap(strs, i, s);
+            }
+        }
+    }
+    if (left != s) {
+        swap(strs, pivot, s);
+    }
+    return s;
+}
+
+void quicksort_helper(string[] strs, int left, int right) {
+    if (left < right) {
+        var s = lomuto(strs, left, right);
+        quicksort_helper(strs, left, s-1);
+        quicksort_helper(strs, s+1, right);
+    }
+}
+
+void quicksort(string[] strs, int len) {
+    quicksort_helper(strs, 0, len-1);
+}
+
+int program(int argc, string[] argv) {
+    if (argc < 2) {
+        print_string("Must provide at least 1 string to sort!");
+        return 1;
+    }
+    if (argc > 129) {
+        print_string("Too many arguments provided! At most 128 arguments can be given!");
+    }
+    var n_strs = argc-1;
+    var strs = new string[128];
+
+    for (var i = 1; i <= n_strs; i = i + 1;) {
+        strs[i-1] = argv[i];
+    }
+
+    quicksort(strs, 0, n_strs);
+
+    for (var i = 0; i < n_strs-1; i = i + 1;) {
+        print_string(strs[i]);
+    }
+
+    return 0;
+}

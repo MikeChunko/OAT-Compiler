@@ -29,7 +29,7 @@ let exec_e2e_ast ll_ast args extra_files =
   let _ = Platform.sh (Printf.sprintf "rm -f %s %s" dot_s_file exec_file) Platform.ignore_error in
   let _ = Platform.verb @@ Printf.sprintf "** Executable exited with: %d\n" result in
   Int64.of_int result
-  
+
 
 let exec_e2e_file path args =
   let ast = Driver.parse_ll_file path in
@@ -40,7 +40,7 @@ let io_test path args =
   let output_path = !Platform.output_path in
   let dot_s_file = Platform.gen_name output_path "test" ".s" in
   let exec_file = Platform.gen_name output_path "exec" "" in
-  let tmp_file = Platform.gen_name output_path "tmp" ".txt" in  
+  let tmp_file = Platform.gen_name output_path "tmp" ".txt" in
   let asm_ast = Backend.compile_prog ll_ast in
   let asm_str = X86.string_of_prog asm_ast in
   let _ = Driver.write_file dot_s_file asm_str in
@@ -67,11 +67,11 @@ let c_link_test c_files path args =
 
 let oat_file_test path args =
   let () = Platform.verb @@ Printf.sprintf "** Processing: %s\n" path in
-  
+
   let output_path = !Platform.output_path in
   let dot_ll_file = Platform.gen_name output_path "test" ".ll" in
   let exec_file = Platform.gen_name output_path "exec" "" in
-  let tmp_file = Platform.gen_name output_path "tmp" ".txt" in  
+  let tmp_file = Platform.gen_name output_path "tmp" ".txt" in
 
   let oat_ast = parse_oat_file path in
   Typechecker.typecheck_program oat_ast;
@@ -94,7 +94,7 @@ let oat_tc_ok_file_test path =
 let oat_tc_err_file_test path err =
   let _ = Platform.verb @@ Printf.sprintf "** OAT Typechecker Error Processing: %s\n" path in
   let oat_ast = parse_oat_file path in
-  try 
+  try
     let _ = Typechecker.typecheck_program oat_ast in
     failwith @@ Printf.sprintf "Expected type error: %s" err
   with
@@ -120,7 +120,7 @@ let executed_tc_err_file tests =
   List.map (fun (path, err) ->
       ("typechecking: " ^ path, fun () -> oat_tc_err_file_test path err)) tests
 
-  
+
 
 let executed_io tests =
   List.map (fun (fn, args, ans) ->
@@ -154,7 +154,7 @@ let unit_tests = [
   "subtype_stringQ_stringQ",
    (fun () ->
        if Typechecker.subtype Tctxt.empty (TNullRef RString) (TNullRef RString) then ()
-       else failwith "should not fail")                                                                                     
+       else failwith "should not fail")
 ; ("no_subtype_stringQ_stringQ",
    (fun () ->
        if Typechecker.subtype Tctxt.empty (TNullRef RString) (TRef RString) then
@@ -182,7 +182,7 @@ let hw4_globals_tests = [
   ("hw4programs/globals4.oat", "", "5");
   ("hw4programs/globals5.oat", "", "17");
   ("hw4programs/globals6.oat", "", "15");
-  ("hw4programs/globals7.oat", "", "3");    
+  ("hw4programs/globals7.oat", "", "3");
 ]
 
 let hw4_path_tests = [
@@ -279,7 +279,7 @@ let hw4_type_error_tests = [
 ; "hw4programs/run43.oat"
 ; "hw4programs/run44.oat"
 ; "hw4programs/run45.oat"
-]    
+]
 
 
 let typecheck_equality_tests = [
@@ -295,7 +295,7 @@ let struct_tests = [
 ("hw5programs/compile_return_struct.oat", "", "0");
 ("hw5programs/compile_struct_array.oat", "", "15");
 ("hw5programs/compile_struct_fptr.oat", "", "7");
-("hw5programs/compile_various_fields.oat", "", "hello253"); 
+("hw5programs/compile_various_fields.oat", "", "hello253");
 ]
 
 let fptr_tests = [
@@ -308,7 +308,7 @@ let fptr_tests = [
   ("hw5programs/compile_local_fptr.oat", "", "5");
   ("hw5programs/compile_function_shadow.oat", "", "12");
   ("hw5programs/compile_global_struct_fptr.oat", "", "20");
-  ("hw5programs/compile_builtin_argument.oat", "", "abab0");    
+  ("hw5programs/compile_builtin_argument.oat", "", "abab0");
 ]
 
 let typecheck_subtyping_tests =
@@ -320,7 +320,7 @@ let typecheck_subtyping_tests =
   ; "hw5programs/tc_subtyping6.oat"
   ; "hw5programs/tc_subtyping7.oat"
   ; "hw5programs/tc_subtyping8.oat"
-  ; "hw5programs/tc_subtyping9.oat"            
+  ; "hw5programs/tc_subtyping9.oat"
   ]
 
 let typecheck_subtyping_error_tests =
@@ -329,11 +329,11 @@ let typecheck_subtyping_error_tests =
   ; "hw5programs/tc_subtyping_err3.oat"
   ; "hw5programs/tc_subtyping_err4.oat"
   ; "hw5programs/tc_subtyping_err5.oat"
-  ; "hw5programs/tc_subtyping_err6.oat"        
+  ; "hw5programs/tc_subtyping_err6.oat"
   ; "hw5programs/tc_subtyping_err7.oat"
-  ; "hw5programs/tc_subtyping_err8.oat"            
+  ; "hw5programs/tc_subtyping_err8.oat"
   ]
-  
+
 
 let typecheck_statement_error_tests =
   [ "hw5programs/tc_error_early_return.oat";
@@ -366,11 +366,11 @@ let typecheck_error_expression_tests =
     "hw5programs/tc_error_array1.oat";
     "hw5programs/tc_error_array2.oat";
     "hw5programs/tc_error_array3.oat";
-    "hw5programs/tc_error_array4.oat";        
+    "hw5programs/tc_error_array4.oat";
     "hw5programs/tc_error_null.oat";
   ]
 
-let typecheck_error_struct_tests = 
+let typecheck_error_struct_tests =
   [ "hw5programs/tc_error_struct_proj.oat";
     "hw5programs/tc_error_struct1.oat";
     "hw5programs/tc_error_struct2.oat";
@@ -410,7 +410,7 @@ let typecheck_correct_other_tests =
 let typecheck_error_null_not_null_tests =
   hw4_type_error_tests
 
-  
+
 let fptr_tests = [
   ("hw5programs/compile_array_fptr.oat", "", "2");
   ("hw5programs/compile_func_argument.oat", "", "4");
@@ -421,7 +421,7 @@ let fptr_tests = [
   ("hw5programs/compile_local_fptr.oat", "", "5");
   ("hw5programs/compile_function_shadow.oat", "", "12");
   ("hw5programs/compile_global_struct_fptr.oat", "", "20");
-  ("hw5programs/compile_builtin_argument.oat", "", "abab0");    
+  ("hw5programs/compile_builtin_argument.oat", "", "abab0");
 ]
 
 
@@ -431,8 +431,8 @@ let new_tests = [
   ("hw5programs/ifq3.oat", "", "6");
   ("hw5programs/ifq4.oat", "", "4");
   ("hw5programs/ifq5.oat", "", "4");
-  ("hw5programs/run44fixed.oat", "", "hello0");  
-  ("hw5programs/length1.oat", "", "5");  
+  ("hw5programs/run44fixed.oat", "", "hello0");
+  ("hw5programs/length1.oat", "", "5");
   ("hw5programs/compile_array_init.oat", "", "2");
   ("hw5programs/array_oob.oat", "", "Out of bounds index 3 for array length 30001");
   ("hw5programs/conquest.oat", "", "My name is Jeff...\nCharizard is the BEST Pokemon ever!!!11");
@@ -470,7 +470,7 @@ let tc_err_tests = [
 let typecheck_tests : suite = [
   GradedTest("subtype unit tests", 1, unit_tests);
   GradedTest("tc subtyping tests", 4, typecheck_file_correct typecheck_subtyping_tests);
-  GradedTest("tc subtyping error tests", 4, typecheck_file_error typecheck_subtyping_error_tests);  
+  GradedTest("tc subtyping error tests", 4, typecheck_file_error typecheck_subtyping_error_tests);
   GradedTest("tc equality tests", 4, typecheck_file_correct typecheck_equality_tests);
   GradedTest("tc statement error tests", 5, typecheck_file_error typecheck_statement_error_tests);
   GradedTest("tc statement correct tests", 5, typecheck_file_correct typecheck_correct_statement_tests);

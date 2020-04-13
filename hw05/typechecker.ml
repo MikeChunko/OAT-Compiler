@@ -67,7 +67,7 @@ and subtype_ref (c:Tctxt.t) (t1:rty) (t2:rty) : bool =
 and subtype_struct (c:Tctxt.t) (id1:id) (id2:id) : bool =
   match lookup_struct_option id2 c with
   | None      -> false
-  | Some flst -> 
+  | Some flst ->
     List.fold_left (fun b x ->
       b && match lookup_field_option id1 x.fieldName c with
       | None    -> false
@@ -75,8 +75,14 @@ and subtype_struct (c:Tctxt.t) (id1:id) (id2:id) : bool =
 
 and subtype_func (c:Tctxt.t) (ts1:ty list) (rt1:ret_ty) (ts2:ty list) (rt2:ret_ty) : bool =
   if subtype_retty c rt1 rt2
-  then failwith "subtype_func: Unimplemented"
+  then subtype_func_params c ts1 ts2
   else false
+
+and subtype_func_params (c:Tctxt.t) (ts1:ty list) (ts2:ty list) : bool =
+  match ts1, ts2 with
+  | h1::tl1,h2::tl2 -> subtype c h1 h2 && subtype_func_params c tl1 tl2
+  | [],[]           -> true
+  | _               -> false
 
 and subtype_retty (c:Tctxt.t) (t1:ret_ty) (t2:ret_ty) : bool =
   match t1, t2 with
@@ -165,8 +171,17 @@ let rec typecheck_exp (c:Tctxt.t) (e:Ast.exp node) : Ast.ty =
   | Length e               -> failwith "typecheck_exp: Length"
   | CStruct (id, es)       -> failwith "typecheck_exp: CStruct"
   | Proj (e,id)            -> failwith "typecheck_exp: Prog"
-  | Call (e,es)            -> failwith "typecheck_exp: Call"
-  | Bop (binop,e1,e2)      -> 
+  | Call (e,es)            ->
+    let tylist1, retty = match typecheck_exp c e with
+      | TRef(RFun(ts,retty)) -> ts,retty
+      | _                    -> type_error e "typecheck_exp: Call: Id is not a function" in
+    let tylist2 = List.map (typecheck_exp c) es in
+    if subtype_func_params c tylist1 tylist2
+    then match retty with
+      | RetVal ty -> ty
+      | RetVoid   -> type_error e "typecheck_exp: Call: Unexpected return type from function"
+    else type_error e "typecheck_exp: Call: Invalid parameters passed to function"
+  | Bop (binop,e1,e2)      ->
     let ty1,ty2,ty3 = typ_of_binop binop in
     let t1 = typecheck_exp c e1 in
     let t2 = typecheck_exp c e2 in
@@ -217,9 +232,13 @@ let rec typecheck_exp (c:Tctxt.t) (e:Ast.exp node) : Ast.ty =
 let rec typecheck_stmt (tc:Tctxt.t) (s:Ast.stmt node) (to_ret:ret_ty) : Tctxt.t * bool =
   match s.elt with
   | Assn (e1,e2)            ->
-    if subtype tc (typecheck_exp tc e2) (typecheck_exp tc e1)
-    then tc, false
-    else type_error s "typecheck_stmt: Assn: Invalid types"
+    let ty1 = typecheck_exp tc e1 in
+    (match ty1 with
+    | TRef (RFun _) -> type_error s "typecheck_stmt: Assn: Cannot assign to function"
+    | _ ->
+      if subtype tc (typecheck_exp tc e2) ty1
+      then tc, false
+      else type_error s "typecheck_stmt: Assn: Invalid types")
   | Decl (id,e)             -> failwith "typecheck_stmt: Decl"
   | Ret e                   ->
     (match e with

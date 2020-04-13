@@ -270,23 +270,36 @@ let rec typecheck_stmt (tc:Tctxt.t) (s:Ast.stmt node) (to_ret:ret_ty) : Tctxt.t 
   | SCall (e,es)            -> failwith "typecheck_stmt: SCall"
   | If (e,thn,els)          ->
     let condition = (typecheck_exp tc e) = TBool in
-    let thn_returns = typecheck_block tc thn to_ret in
-    let els_returns = typecheck_block tc els to_ret in
+    let _,thn_returns = typecheck_block tc thn to_ret in
+    let _,els_returns = typecheck_block tc els to_ret in
     if condition
     then tc, thn_returns && els_returns
     else type_error s "typecheck_stmt: If: Condition is not a bool"
   | Cast (rty,id,e,thn,els) -> failwith "typecheck_stmt: Cast"
-  | For (vlst,e,s,slst)     -> failwith "typecheck_stmt: For"
+  | For (vlst,e,stmt,slst)     ->
+    let tc' = List.fold_left (fun c (id,e) ->
+      add_local c id (typecheck_exp c e)
+    ) tc vlst in
+    let condition = match e with
+      | Some e -> (typecheck_exp tc' e) = TBool
+      | None   -> true in
+    let _ = match stmt with
+      | Some s -> typecheck_stmt tc' s to_ret
+      | None   -> tc', false in
+    let _ = typecheck_block tc' slst to_ret in
+    if condition
+    then tc, false
+    else type_error s "typecheck_stmt: For: Condition is not a bool"
   | While (e,slst)          ->
     let _ = typecheck_block tc slst to_ret in
     if (typecheck_exp tc e) = TBool
     then tc, false
     else type_error s "typecheck_stmt: While: Condition is not a bool or body fails typechecking"
 
-and typecheck_block (tc:Tctxt.t) (b:Ast.block) (ret:ret_ty) : bool =
+and typecheck_block (tc:Tctxt.t) (b:Ast.block) (ret:ret_ty) : Tctxt.t * bool =
   match b with
-  | []    -> false
-  | [s]   -> snd (typecheck_stmt tc s ret)
+  | []    -> tc, false
+  | [s]   -> typecheck_stmt tc s ret
   | h::tl ->
     let tc', returns = typecheck_stmt tc h ret in
     if returns
@@ -317,7 +330,7 @@ let typecheck_tdecl (tc:Tctxt.t) id fs  (l:'a Ast.node) : unit =
 let typecheck_fdecl (tc:Tctxt.t) (f:Ast.fdecl) (l:'a Ast.node) : unit =
   let {frtyp; fname; args; body} = f in
   let functc = List.fold_left (fun c (ty, id) -> add_local c id ty) tc args in
-  let returns = typecheck_block functc body frtyp in
+  let _,returns = typecheck_block functc body frtyp in
   if returns then ()
   else type_error l ("typecheck_fdecl: Does not return")
 

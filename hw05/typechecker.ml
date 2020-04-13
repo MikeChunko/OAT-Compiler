@@ -268,12 +268,22 @@ let rec typecheck_stmt (tc:Tctxt.t) (s:Ast.stmt node) (to_ret:ret_ty) : Tctxt.t 
       then tc, true
       else type_error s "typecheck_stmt: Ret: Unexpected return value")
   | SCall (e,es)            -> failwith "typecheck_stmt: SCall"
-  | If (e,thn,els)          -> failwith "typecheck_stmt: If"
+  | If (e,thn,els)          ->
+    let condition = (typecheck_exp tc e) = TBool in
+    let thn_returns = typecheck_block tc thn to_ret in
+    let els_returns = typecheck_block tc els to_ret in
+    if condition
+    then tc, thn_returns && els_returns
+    else type_error s "typecheck_stmt: If: Condition is not a bool"
   | Cast (rty,id,e,thn,els) -> failwith "typecheck_stmt: Cast"
   | For (vlst,e,s,slst)     -> failwith "typecheck_stmt: For"
-  | While (e,slst)          -> failwith "typecheck_stmt: While"
+  | While (e,slst)          ->
+    let _ = typecheck_block tc slst to_ret in
+    if (typecheck_exp tc e) = TBool
+    then tc, false
+    else type_error s "typecheck_stmt: While: Condition is not a bool or body fails typechecking"
 
-let rec typecheck_block (tc:Tctxt.t) (b:Ast.block) (ret:ret_ty) : bool =
+and typecheck_block (tc:Tctxt.t) (b:Ast.block) (ret:ret_ty) : bool =
   match b with
   | []    -> false
   | [s]   -> snd (typecheck_stmt tc s ret)

@@ -182,12 +182,19 @@ let rec typecheck_exp (c:Tctxt.t) (e:Ast.exp node) : Ast.ty =
       | RetVoid   -> type_error e "typecheck_exp: Call: Unexpected return type from function"
     else type_error e "typecheck_exp: Call: Invalid parameters passed to function"
   | Bop (binop,e1,e2)      ->
-    let ty1,ty2,ty3 = typ_of_binop binop in
     let t1 = typecheck_exp c e1 in
     let t2 = typecheck_exp c e2 in
-    if t1 = ty1 && t2 = ty2
-    then ty3
-    else type_error e "typecheck_exp: Binop: Incorrect types"
+    (match binop with
+    | Eq
+    | Neq ->
+      if t1 = t2
+      then TBool
+      else type_error e "typecheck_exp: Binop: Invalid types for comparison"
+    | _   ->
+      let ty1,ty2,ty3 = typ_of_binop binop in
+      if t1 = ty1 && t2 = ty2
+      then ty3
+      else type_error e "typecheck_exp: Binop: Incorrect types")
   | Uop (unop,e)           ->
     let ty1,ty2 = typ_of_unop unop in
     if (typecheck_exp c e) = ty1
@@ -239,7 +246,11 @@ let rec typecheck_stmt (tc:Tctxt.t) (s:Ast.stmt node) (to_ret:ret_ty) : Tctxt.t 
       if subtype tc (typecheck_exp tc e2) ty1
       then tc, false
       else type_error s "typecheck_stmt: Assn: Invalid types")
-  | Decl (id,e)             -> failwith "typecheck_stmt: Decl"
+  | Decl (id,e)             ->
+    let ty = typecheck_exp tc e in
+    (match lookup_local_option id tc with
+    | None   -> add_local tc id ty, false
+    | Some _ -> type_error s ("typecheck_stmt: Decl: Duplicate definition of local id " ^ id))
   | Ret e                   ->
     (match e with
     | None ->
@@ -332,6 +343,10 @@ let create_struct_ctxt (p:Ast.prog) : Tctxt.t =
   ) Tctxt.empty p
 
 let create_function_ctxt (tc:Tctxt.t) (p:Ast.prog) : Tctxt.t =
+  (* Add builtins first *)
+  let tc = List.fold_left (fun c (fname, (args, frtyp)) ->
+    add_global c fname (TRef (RFun (args, frtyp)))
+  ) tc builtins in
   List.fold_left (fun c decl ->
     match decl with
     | Gfdecl fdecl ->

@@ -9,7 +9,7 @@ open Tctxt
 
 exception TypeError of string
 
-let type_error (l : 'a node) err =
+let type_error (l:'a node) err =
   let (_, (s, e), _) = l.loc in
   raise (TypeError (Printf.sprintf "[%d, %d] %s" s e err))
 
@@ -42,16 +42,41 @@ let typ_of_unop : Ast.unop -> Ast.ty * Ast.ty = function
 (* Decides whether H |- t1 <: t2
     - assumes that H contains the declarations of all the possible struct types
 
-    - you will want to introduce addition (possibly mutually recursive)
+    - you will want to introduce additional (possibly mutually recursive)
       helper functions to implement the different judgments of the subtyping
       relation. We have included a template for subtype_ref to get you started.
       (Don't forget about OCaml's 'and' keyword. *)
-let rec subtype (c : Tctxt.t) (t1 : Ast.ty) (t2 : Ast.ty) : bool =
-  failwith "todo: subtype"
+let rec subtype (c:Tctxt.t) (t1:ty) (t2:ty) : bool =
+  match t1, t2 with
+  | TBool, TBool
+  | TInt, TInt          -> true
+  | TNullRef t1', TNullRef t2'
+  | TRef t1', TNullRef t2'
+  | TRef t1', TRef t2' -> subtype_ref c t1' t2'
+  | _                  -> false
 
 (* Decides whether H |-r ref1 <: ref2 *)
-and subtype_ref (c : Tctxt.t) (t1 : Ast.rty) (t2 : Ast.rty) : bool =
-  failwith "todo: subtype_ref"
+and subtype_ref (c:Tctxt.t) (t1:rty) (t2:rty) : bool =
+  match t1, t2 with
+  | RString, RString               -> true
+  | RArray t1', RArray t2'         -> t1' = t2'
+  | RStruct t1', RStruct t2'       -> subtype_struct c t1' t2'
+  | RFun (ts1,rt1), RFun (ts2,rt2) -> subtype_func c ts1 rt1 ts2 rt2
+  | _                              -> false
+
+and subtype_struct (c:Tctxt.t) (id1:id) (id2:id) : bool =
+  failwith "subtype_struct: Unimplemented"
+
+and subtype_func (c:Tctxt.t) (ts1:ty list) (rt1:ret_ty) (ts2:ty list) (rt2:ret_ty) : bool =
+  if subtype_retty c rt1 rt2
+  then failwith "subtype_func: Unimplemented"
+  else false
+
+and subtype_retty (c:Tctxt.t) (t1:ret_ty) (t2:ret_ty) : bool =
+  match t1, t2 with
+  | RetVoid, RetVoid       -> true
+  | RetVal t1', RetVal t2' -> subtype c t1' t2'
+  | _                      -> false
 
 (* well-formed types -------------------------------------------------------- *)
 (* Implement a (set of) functions that check that types are well formed according
@@ -64,11 +89,11 @@ and subtype_ref (c : Tctxt.t) (t1 : Ast.rty) (t2 : Ast.rty) : bool =
     - l is just an ast node that provides source location information for
       generating error messages (it's only needed for the type_error generation)
     - tc contains the structure definition context *)
-let rec typecheck_ty (l : 'a Ast.node) (tc : Tctxt.t) (t : Ast.ty) : unit =
+let rec typecheck_ty (l:'a Ast.node) (tc:Tctxt.t) (t:Ast.ty) : unit =
   failwith "todo: implement typecheck_ty"
 
 (* A helper function to determine whether a type allows the null value *)
-let is_nullable_ty (t : Ast.ty) : bool =
+let is_nullable_ty (t:Ast.ty) : bool =
   match t with
   | TNullRef _ -> true
   | _          -> false
@@ -96,7 +121,7 @@ let is_nullable_ty (t : Ast.ty) : bool =
    order (compared with the structure definition).  This means that, given the
    declaration struct T { a:int; b:int; c:int } The expression new T {b=3; c=4;
    a=1} is well typed.  (You should sort the fields to compare them.) *)
-let rec typecheck_exp (c : Tctxt.t) (e : Ast.exp node) : Ast.ty =
+let rec typecheck_exp (c:Tctxt.t) (e:Ast.exp node) : Ast.ty =
   failwith "todo: implement typecheck_exp"
 
 (* statements --------------------------------------------------------------- *)
@@ -112,7 +137,6 @@ let rec typecheck_exp (c : Tctxt.t) (e : Ast.exp node) : Ast.ty =
    Returns:
      - the new type context (which includes newly declared variables in scope
        after this statement)
-
      - A boolean indicating the return behavior of a statement:
         false:  might not return
         true: definitely returns
@@ -135,8 +159,8 @@ let rec typecheck_exp (c : Tctxt.t) (e : Ast.exp node) : Ast.ty =
 
    - You will probably find it convenient to add a helper function that implements the
      block typecheck rules. *)
-let rec typecheck_stmt (tc : Tctxt.t) (s:Ast.stmt node) (to_ret:ret_ty) : Tctxt.t * bool =
-  failwith "todo: implement typecheck_stmt"
+let rec typecheck_stmt (tc:Tctxt.t) (s:Ast.stmt node) (to_ret:ret_ty) : Tctxt.t * bool =
+  failwith "typecheck_stmt"
 
 (* struct type declarations ------------------------------------------------- *)
 (* Here is an example of how to implement the TYP_TDECLOK rule, which is
@@ -145,10 +169,10 @@ let rec typecheck_stmt (tc : Tctxt.t) (s:Ast.stmt node) (to_ret:ret_ty) : Tctxt.
 (* Helper function to look for duplicate field names *)
 let rec check_dups fs =
   match fs with
-  | []     -> false
-  | h :: t -> (List.exists (fun x -> x.fieldName = h.fieldName) t) || check_dups t
+  | []   -> false
+  | h::t -> (List.exists (fun x -> x.fieldName = h.fieldName) t) || check_dups t
 
-let typecheck_tdecl (tc : Tctxt.t) id fs  (l : 'a Ast.node) : unit =
+let typecheck_tdecl (tc:Tctxt.t) id fs  (l:'a Ast.node) : unit =
   if check_dups fs
   then type_error l ("Repeated fields in " ^ id)
   else List.iter (fun f -> typecheck_ty l tc f.ftyp) fs
@@ -159,8 +183,15 @@ let typecheck_tdecl (tc : Tctxt.t) id fs  (l : 'a Ast.node) : unit =
       function
     - typechecks the body of the function (passing in the expected return type
     - checks that the function actually returns *)
-let typecheck_fdecl (tc : Tctxt.t) (f : Ast.fdecl) (l : 'a Ast.node) : unit =
-  failwith "todo: typecheck_fdecl"
+let typecheck_fdecl (tc:Tctxt.t) (f:Ast.fdecl) (l:'a Ast.node) : unit =
+  failwith "typecheck_fdecl"
+
+(* For all elements x in the list, checks if (func x) occurs in map (func) lst *)
+let rec duplicates (lst:'a list) (func:'a -> 'b) : bool =
+  match lst with
+  | h::tl -> List.exists (fun x -> (func x) = (func h)) tl ||
+    duplicates tl func
+  | [] -> false
 
 (* creating the typchecking context ----------------------------------------- *)
 
@@ -169,30 +200,48 @@ let typecheck_fdecl (tc : Tctxt.t) (f : Ast.fdecl) (l : 'a Ast.node) : unit =
 
    create_struct_ctxt: - adds all the struct types to the struct 'S'
    context (checking to see that there are no duplicate fields
-
      H |-s prog ==> H'
 
    create_function_ctxt: - adds the the function identifiers and their
    types to the 'G' context (ensuring that there are no redeclared
    function identifiers)
-
      H ; G1 |-f prog ==> G2
 
    create_global_ctxt: - typechecks the global initializers and adds
    their identifiers to the 'G' global context
-
      H ; G1 |-g prog ==> G2
 
    NOTE: global initializers may mention function identifiers as
    constants, but can mention only other global values that were declared earlier *)
 let create_struct_ctxt (p:Ast.prog) : Tctxt.t =
-  failwith "todo: create_struct_ctxt"
+  List.fold_left (fun c decl ->
+    match decl with
+    | Gtdecl tdecl ->
+      let id, fields = tdecl.elt in
+      (match lookup_struct_option id c with
+      | None   ->
+        if duplicates fields (fun field -> field.fieldName)
+        then type_error tdecl ("create_struct_ctxt: " ^ id ^ " has duplicate fields")
+        else add_struct c id fields
+      | Some _ -> type_error tdecl ("create_struct_ctxt: Duplicate struct id " ^ id))
+    | _            -> c
+  ) Tctxt.empty p
 
 let create_function_ctxt (tc:Tctxt.t) (p:Ast.prog) : Tctxt.t =
-  failwith "todo: create_function_ctxt"
+  List.fold_left (fun c decl ->
+    match decl with
+    | Gfdecl fdecl ->
+      let {frtyp; fname; args; body} = fdecl.elt in
+      (match lookup_global_option fname c with
+      | None   -> 
+        let args = List.map (fst) args in
+        add_global c fname (TRef (RFun (args, frtyp)))
+      | Some _ -> c)
+    | _            -> c
+  ) tc p
 
 let create_global_ctxt (tc:Tctxt.t) (p:Ast.prog) : Tctxt.t =
-  failwith "todo: create_function_ctxt"
+  Tctxt.empty (* TODO *)
 
 (* This function implements the |- prog and the H ; G |- prog
    rules of the oat.pdf specification. *)

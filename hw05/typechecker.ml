@@ -80,7 +80,7 @@ and subtype_func (c:Tctxt.t) (ts1:ty list) (rt1:ret_ty) (ts2:ty list) (rt2:ret_t
 
 and subtype_func_params (c:Tctxt.t) (ts1:ty list) (ts2:ty list) : bool =
   match ts1, ts2 with
-  | h1::tl1,h2::tl2 -> subtype c h1 h2 && subtype_func_params c tl1 tl2
+  | h1::tl1,h2::tl2 -> subtype c h2 h1 && subtype_func_params c tl1 tl2
   | [],[]           -> true
   | _               -> false
 
@@ -240,9 +240,12 @@ let rec typecheck_stmt (tc:Tctxt.t) (s:Ast.stmt node) (to_ret:ret_ty) : Tctxt.t 
   match s.elt with
   | Assn (e1,e2)            ->
     let ty1 = typecheck_exp tc e1 in
-    (match ty1 with
-    | TRef (RFun _) -> type_error s "typecheck_stmt: Assn: Cannot assign to function"
-    | _ ->
+    let id = match e1.elt with
+    | Id id -> id
+    | _     -> "" in
+    (match ty1, lookup_global_option id tc with
+    | TRef (RFun _),Some _ -> type_error s "typecheck_stmt: Assn: Cannot assign to function"
+    | _                    ->
       if subtype tc (typecheck_exp tc e2) ty1
       then tc, false
       else type_error s "typecheck_stmt: Assn: Invalid types")

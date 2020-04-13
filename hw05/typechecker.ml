@@ -65,7 +65,13 @@ and subtype_ref (c:Tctxt.t) (t1:rty) (t2:rty) : bool =
   | _                              -> false
 
 and subtype_struct (c:Tctxt.t) (id1:id) (id2:id) : bool =
-  failwith "subtype_struct: Unimplemented"
+  match lookup_struct_option id2 c with
+  | None      -> false
+  | Some flst -> 
+    List.fold_left (fun b x ->
+      b && match lookup_field_option id1 x.fieldName c with
+      | None    -> false
+      | Some ty -> ty = x.ftyp) true flst
 
 and subtype_func (c:Tctxt.t) (ts1:ty list) (rt1:ret_ty) (ts2:ty list) (rt2:ret_ty) : bool =
   if subtype_retty c rt1 rt2
@@ -90,7 +96,26 @@ and subtype_retty (c:Tctxt.t) (t1:ret_ty) (t2:ret_ty) : bool =
       generating error messages (it's only needed for the type_error generation)
     - tc contains the structure definition context *)
 let rec typecheck_ty (l:'a Ast.node) (tc:Tctxt.t) (t:Ast.ty) : unit =
-  failwith "todo: implement typecheck_ty"
+  match t with
+  | TInt | TBool          -> ()
+  | TRef rt | TNullRef rt -> typecheck_rty l tc rt
+
+and typecheck_rty (l:'a Ast.node) (tc:Tctxt.t) (t:rty) : unit =
+  match t with
+  | RString         -> ()
+  | RStruct id      ->
+    (match Tctxt.lookup_struct_option id tc with
+    | None   -> type_error l "typecheck_rty: Invalid struct id"
+    | Some _ -> ())
+  | RArray ty       -> typecheck_ty l tc ty
+  | RFun (tys, rty) ->
+    List.iter (fun x -> typecheck_ty l tc x) tys;
+    typecheck_retty l tc rty
+
+and typecheck_retty (l:'a Ast.node) (tc:Tctxt.t) (t:ret_ty) : unit =
+  match t with
+  | RetVoid -> ()
+  | RetVal ty -> typecheck_ty l tc ty
 
 (* A helper function to determine whether a type allows the null value *)
 let is_nullable_ty (t:Ast.ty) : bool =
@@ -122,7 +147,37 @@ let is_nullable_ty (t:Ast.ty) : bool =
    declaration struct T { a:int; b:int; c:int } The expression new T {b=3; c=4;
    a=1} is well typed.  (You should sort the fields to compare them.) *)
 let rec typecheck_exp (c:Tctxt.t) (e:Ast.exp node) : Ast.ty =
-  failwith "todo: implement typecheck_exp"
+  match e.elt with
+  | CNull rty              ->
+    typecheck_rty e c rty;
+    TNullRef rty
+  | CBool _                -> TBool
+  | CInt _                 -> TInt
+  | CStr _                 -> TRef (RString)
+  | Id id                  ->
+    (match Tctxt.lookup_option id c with
+    | None    -> type_error e ("typecheck_exp: Id: Undefined id " ^ id)
+    | Some ty -> ty)
+  | CArr (ty,es)           -> failwith "typecheck_exp: CArr"
+  | NewArr (ty,e)          -> failwith "typecheck_exp: NewArr"
+  | NewArrInit (t,es,id,e) -> failwith "typecheck_exp: NewArrInit"
+  | Index (e1,e2)          -> failwith "typecheck_exp: Index"
+  | Length e               -> failwith "typecheck_exp: Length"
+  | CStruct (id, es)       -> failwith "typecheck_exp: CStruct"
+  | Proj (e,id)            -> failwith "typecheck_exp: Prog"
+  | Call (e,es)            -> failwith "typecheck_exp: Call"
+  | Bop (binop,e1,e2)      -> 
+    let ty1,ty2,ty3 = typ_of_binop binop in
+    let t1 = typecheck_exp c e1 in
+    let t2 = typecheck_exp c e2 in
+    if t1 = ty1 && t2 = ty2
+    then ty3
+    else type_error e "typecheck_exp: Binop: Incorrect types"
+  | Uop (unop,e)           ->
+    let ty1,ty2 = typ_of_unop unop in
+    if (typecheck_exp c e) = ty1
+    then ty2
+    else type_error e "typecheck_exp: Uop: Incorrect type"
 
 (* statements --------------------------------------------------------------- *)
 
@@ -160,7 +215,40 @@ let rec typecheck_exp (c:Tctxt.t) (e:Ast.exp node) : Ast.ty =
    - You will probably find it convenient to add a helper function that implements the
      block typecheck rules. *)
 let rec typecheck_stmt (tc:Tctxt.t) (s:Ast.stmt node) (to_ret:ret_ty) : Tctxt.t * bool =
-  failwith "typecheck_stmt"
+  match s.elt with
+  | Assn (e1,e2)            ->
+    if subtype tc (typecheck_exp tc e2) (typecheck_exp tc e1)
+    then tc, false
+    else type_error s "typecheck_stmt: Assn: Invalid types"
+  | Decl (id,e)             -> failwith "typecheck_stmt: Decl"
+  | Ret e                   ->
+    (match e with
+    | None ->
+      if to_ret = RetVoid
+      then tc, true
+      else type_error s "typecheck_stmt: Ret: Expected void return type"
+    | Some e ->
+      let retty = match to_ret with
+        | RetVoid  -> type_error s "typecheck_stmt: Ret: Expected void return type"
+        | RetVal t -> t in
+      if subtype tc (typecheck_exp tc e) retty
+      then tc, true
+      else type_error s "typecheck_stmt: Ret: Unexpected return value")
+  | SCall (e,es)            -> failwith "typecheck_stmt: SCall"
+  | If (e,thn,els)          -> failwith "typecheck_stmt: If"
+  | Cast (rty,id,e,thn,els) -> failwith "typecheck_stmt: Cast"
+  | For (vlst,e,s,slst)     -> failwith "typecheck_stmt: For"
+  | While (e,slst)          -> failwith "typecheck_stmt: While"
+
+let rec typecheck_block (tc:Tctxt.t) (b:Ast.block) (ret:ret_ty) : bool =
+  match b with
+  | []    -> false
+  | [s]   -> snd (typecheck_stmt tc s ret)
+  | h::tl ->
+    let tc', returns = typecheck_stmt tc h ret in
+    if returns
+    then type_error h "typecheck_block: Early return"
+    else typecheck_block tc' tl ret
 
 (* struct type declarations ------------------------------------------------- *)
 (* Here is an example of how to implement the TYP_TDECLOK rule, which is
@@ -174,7 +262,7 @@ let rec check_dups fs =
 
 let typecheck_tdecl (tc:Tctxt.t) id fs  (l:'a Ast.node) : unit =
   if check_dups fs
-  then type_error l ("Repeated fields in " ^ id)
+  then type_error l ("typecheck_tdecl: Repeated fields in " ^ id)
   else List.iter (fun f -> typecheck_ty l tc f.ftyp) fs
 
 (* function declarations ---------------------------------------------------- *)
@@ -184,14 +272,11 @@ let typecheck_tdecl (tc:Tctxt.t) id fs  (l:'a Ast.node) : unit =
     - typechecks the body of the function (passing in the expected return type
     - checks that the function actually returns *)
 let typecheck_fdecl (tc:Tctxt.t) (f:Ast.fdecl) (l:'a Ast.node) : unit =
-  failwith "typecheck_fdecl"
-
-(* For all elements x in the list, checks if (func x) occurs in map (func) lst *)
-let rec duplicates (lst:'a list) (func:'a -> 'b) : bool =
-  match lst with
-  | h::tl -> List.exists (fun x -> (func x) = (func h)) tl ||
-    duplicates tl func
-  | [] -> false
+  let {frtyp; fname; args; body} = f in
+  let functc = List.fold_left (fun c (ty, id) -> add_local c id ty) tc args in
+  let returns = typecheck_block functc body frtyp in
+  if returns then ()
+  else type_error l ("typecheck_fdecl: Does not return")
 
 (* creating the typchecking context ----------------------------------------- *)
 
@@ -220,7 +305,7 @@ let create_struct_ctxt (p:Ast.prog) : Tctxt.t =
       let id, fields = tdecl.elt in
       (match lookup_struct_option id c with
       | None   ->
-        if duplicates fields (fun field -> field.fieldName)
+        if check_dups fields
         then type_error tdecl ("create_struct_ctxt: " ^ id ^ " has duplicate fields")
         else add_struct c id fields
       | Some _ -> type_error tdecl ("create_struct_ctxt: Duplicate struct id " ^ id))
@@ -231,17 +316,24 @@ let create_function_ctxt (tc:Tctxt.t) (p:Ast.prog) : Tctxt.t =
   List.fold_left (fun c decl ->
     match decl with
     | Gfdecl fdecl ->
-      let {frtyp; fname; args; body} = fdecl.elt in
+      let {frtyp; fname; args} = fdecl.elt in
       (match lookup_global_option fname c with
-      | None   -> 
+      | None   ->
         let args = List.map (fst) args in
         add_global c fname (TRef (RFun (args, frtyp)))
-      | Some _ -> c)
+      | Some _ -> type_error fdecl ("create_struct_ctxt: Duplicate function/global id " ^ fname))
     | _            -> c
   ) tc p
 
 let create_global_ctxt (tc:Tctxt.t) (p:Ast.prog) : Tctxt.t =
-  Tctxt.empty (* TODO *)
+  List.fold_left (fun c decl ->
+    match decl with
+    | Gvdecl gdecl ->
+      let {name; init} = gdecl.elt in
+      (match lookup_global_option name c with
+      | None   -> add_global c name (typecheck_exp c init)
+      | Some _ -> type_error gdecl ("create_struct_ctxt: Duplicate function/global id " ^ name))
+    | _            -> c) tc p
 
 (* This function implements the |- prog and the H ; G |- prog
    rules of the oat.pdf specification. *)

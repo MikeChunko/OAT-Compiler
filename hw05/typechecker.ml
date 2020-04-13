@@ -267,7 +267,16 @@ let rec typecheck_stmt (tc:Tctxt.t) (s:Ast.stmt node) (to_ret:ret_ty) : Tctxt.t 
       if subtype tc (typecheck_exp tc e) retty
       then tc, true
       else type_error s "typecheck_stmt: Ret: Unexpected return value")
-  | SCall (e,es)            -> failwith "typecheck_stmt: SCall"
+  | SCall (e,es)            -> 
+  let tylist1, retty = match typecheck_exp tc e with
+      | TRef(RFun(ts,retty)) -> ts,retty
+      | _                    -> type_error e "typecheck_exp: Call: Id is not a function" in
+    let tylist2 = List.map (typecheck_exp tc) es in
+    if subtype_func_params tc tylist1 tylist2
+    then match retty with
+      | RetVoid  -> tc, false
+      | RetVal _ -> type_error e "typecheck_exp: Call: Unexpected void return type from function"
+    else type_error e "typecheck_exp: Call: Invalid parameters passed to function"
   | If (e,thn,els)          ->
     let condition = (typecheck_exp tc e) = TBool in
     let _,thn_returns = typecheck_block tc thn to_ret in

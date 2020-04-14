@@ -185,7 +185,17 @@ let rec typecheck_exp (c:Tctxt.t) (e:Ast.exp node) : Ast.ty =
     | true,true -> TRef (RArray ty)
     | false,_   -> type_error e "typecheck_exp: NewArr: The expression must be an int"
     | _,false   -> type_error e "typecheck_exp: NewArr: Invalid array type")
-  | NewArrInit (t,es,id,e) -> failwith "typecheck_exp: NewArrInit"
+  | NewArrInit (ty,e1,id,e2) ->
+    let length_check = typecheck_exp c e1 = TInt in
+    let ty_check = match lookup_local_option id c with
+      | None   ->
+        let c' = add_local c id TInt in
+        subtype c' (typecheck_exp c' e2) ty
+      | Some _ -> type_error e ("typecheck_exp: NewArrInit: " ^ id ^ " must not be previously declared") in
+    (match length_check, ty_check with
+    | true,true -> TRef (RArray ty)
+    | false,_   -> type_error e "typecheck_exp: NewArrInit: The expression must be an int"
+    | _,false   -> type_error e "typecheck_exp: NewArrInit: Invalid array type")
   | Index (e1,e2)          ->
     let e2_check = subtype c (typecheck_exp c e2) TInt in
     (match e2_check, typecheck_exp c e1 with

@@ -183,7 +183,15 @@ let oat_alloc_array ct (t:Ast.ty) (size:Ll.operand) : Ll.ty * operand * stream =
 
    - make sure to calculate the correct amount of space to allocate! *)
 let oat_alloc_struct ct (id:Ast.id) : Ll.ty * operand * stream =
-  failwith "TODO: oat_alloc_struct"
+  let struct_id = gensym "struct" in
+  let temp_id = gensym "temp_struct" in
+  let rettyp = cmp_ty ct (TRef (RStruct id)) in
+  let (fields: Ast.field list) = TypeCtxt.lookup id ct in
+  let length = Const (Int64.mul 8L @@ Int64.of_int @@ List.length fields) in
+
+  rettyp, Id struct_id, lift
+  [temp_id, Call(Ptr I64, Gid "oat_malloc", [I64, length]);
+  struct_id, Bitcast(Ptr I64, Id temp_id, rettyp)]
 
 let str_arr_ty s    = Array(1 + String.length s, I8)
 let i1_op_of_bool b = Ll.Const (if b then 1L else 0L)
@@ -317,8 +325,28 @@ let rec cmp_exp (tc : TypeCtxt.t) (c:Ctxt.t) (exp:Ast.exp node) : Ll.ty * Ll.ope
        - use the TypeCtxt operations to compute getelementptr indices
        - compile the initializer expression
        - store the resulting value into the structure *)
+
   | Ast.CStruct (id, l) ->
-    failwith "TODO: Ast.CStruct"
+    let struct_ty, struct_op, struct_code = oat_alloc_struct tc id in
+    print_int (List.length l);
+    
+    let rec assign_elems = function
+    | h::tl ->
+      let field_ptr_id = gensym "get_field_ptr_id" in
+      let field_value_id = gensym "get_field_value_id" in
+      let elem_id, exp_node = h in
+      let elem_index = TypeCtxt.index_of_field id elem_id tc in
+      let ty', op', s' = cmp_exp tc c exp_node in
+      let out_ty = TypeCtxt.lookup_field_name id elem_id tc in
+      let out_ty = cmp_ty tc (fst out_ty) in lift
+      [
+        field_ptr_id, Gep(struct_ty, struct_op, [Const 0L; i64_op_of_int elem_index]);
+        field_value_id, Bitcast(ty', op', out_ty);
+        "", Store(out_ty, Id field_value_id, Id field_ptr_id)
+      ] >@ assign_elems tl
+    | _ -> []
+    in    
+    struct_ty, struct_op, struct_code >@ assign_elems l
 
   | Ast.Proj (e, id) ->
     let ans_ty, ptr_op, code = cmp_exp_lhs tc c exp in
@@ -340,8 +368,20 @@ and cmp_exp_lhs (tc : TypeCtxt.t) (c:Ctxt.t) (e:exp node) : Ll.ty * Ll.operand *
      Ast.proj case of the cmp_exp function (above).
 
      You will find the TypeCtxt.lookup_field_name function helpful. *)
+
   | Ast.Proj (e, i) ->
-    failwith "todo: Ast.Proj case of cmp_exp_lhs"
+    let struct_ty, struct_op, struct_code = cmp_exp tc c e in
+    let struct_name = match struct_ty with
+    | Ptr t -> begin match t with
+      | Namedt i -> i
+      | _ -> failwith "Incorrect type projecting"
+      end
+    | _ -> failwith "Incorrect type projecting" in
+    let ty', inner_ind = TypeCtxt.lookup_field_name struct_name i tc in
+    let ret_ty = cmp_ty tc ty' in
+    let elem_id = gensym "struct_index" in
+    ret_ty, Id (elem_id), struct_code >@ lift
+    [elem_id, Gep(struct_ty, struct_op, [Const 0L; Const inner_ind])]
 
   (* ARRAY TASK: Modify this index code to call 'oat_assert_array_length' before doing the
      GEP calculation. This should be very straightforward, except that you'll need to use a Bitcast.

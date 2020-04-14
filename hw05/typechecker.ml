@@ -129,6 +129,10 @@ let is_nullable_ty (t:Ast.ty) : bool =
   | TNullRef _ -> true
   | _          -> false
 
+(* Wrapps fst around a compare operation for comparison of association lists *)
+let assoc_compare (x:'a) (y:'a) : int =
+  compare (fst x) (fst y)
+
 (* typechecking expressions ------------------------------------------------- *)
 (* Typechecks an expression in the typing context c, returns the type of the
    expression.  This function should implement the inference rules given in the
@@ -169,8 +173,20 @@ let rec typecheck_exp (c:Tctxt.t) (e:Ast.exp node) : Ast.ty =
   | NewArrInit (t,es,id,e) -> failwith "typecheck_exp: NewArrInit"
   | Index (e1,e2)          -> failwith "typecheck_exp: Index"
   | Length e               -> failwith "typecheck_exp: Length"
-  | CStruct (id, es)       -> failwith "typecheck_exp: CStruct"
-  | Proj (e,id)            -> failwith "typecheck_exp: Prog"
+  | CStruct (id, es)       ->
+    let fields = List.map (fun (id,e) -> {fieldName=id; ftyp=typecheck_exp c e}) es in
+    let id' = "_" ^ id in
+    let c' = add_struct c id' fields in
+    if subtype c' (TRef (RStruct id')) (TRef (RStruct id))
+    then TRef (RStruct id)
+    else type_error e "typecheck_exp: CStruct: Invalid Struct"
+    (*let field_check = List.fold_left (fun b (id',e') ->
+      match lookup_field_option id id' c with
+      | None    -> type_error e ("typecheck_exp: CStruct: Field " ^ id' ^ " does not exist")
+      | Some ty -> subtype c (typecheck_exp c e') ty
+    ) true es in*)
+    (*TRef (RStruct id)*)
+  | Proj (e,id)            -> failwith "typecheck_exp: Proj"
   | Call (e,es)            ->
     let tylist1, retty = match typecheck_exp c e with
       | TRef(RFun(ts,retty)) -> ts,retty
@@ -187,7 +203,7 @@ let rec typecheck_exp (c:Tctxt.t) (e:Ast.exp node) : Ast.ty =
     (match binop with
     | Eq
     | Neq ->
-      if t1 = t2
+      if subtype c t1 t2 && subtype c t2 t1
       then TBool
       else type_error e "typecheck_exp: Binop: Invalid types for comparison"
     | _   ->
@@ -267,7 +283,7 @@ let rec typecheck_stmt (tc:Tctxt.t) (s:Ast.stmt node) (to_ret:ret_ty) : Tctxt.t 
       if subtype tc (typecheck_exp tc e) retty
       then tc, true
       else type_error s "typecheck_stmt: Ret: Unexpected return value")
-  | SCall (e,es)            -> 
+  | SCall (e,es)            ->
   let tylist1, retty = match typecheck_exp tc e with
       | TRef(RFun(ts,retty)) -> ts,retty
       | _                    -> type_error e "typecheck_exp: Call: Id is not a function" in

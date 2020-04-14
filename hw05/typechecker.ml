@@ -174,19 +174,25 @@ let rec typecheck_exp (c:Tctxt.t) (e:Ast.exp node) : Ast.ty =
   | Index (e1,e2)          -> failwith "typecheck_exp: Index"
   | Length e               -> failwith "typecheck_exp: Length"
   | CStruct (id, es)       ->
-    let fields = List.map (fun (id,e) -> {fieldName=id; ftyp=typecheck_exp c e}) es in
+    let rec has_dupes : (Ast.id * Ast.exp node) list -> bool = function
+      | (id,_)::tl -> has_dupes tl || List.exists (fun (id',_) -> id = id') tl
+      | _          -> false in
     let id' = "_" ^ id in
+    let fields = List.map (fun (id,e) -> {fieldName=id; ftyp=typecheck_exp c e}) es in
     let c' = add_struct c id' fields in
-    if subtype c' (TRef (RStruct id')) (TRef (RStruct id))
-    then TRef (RStruct id)
+    let s1, s2 = TRef (RStruct id), TRef (RStruct id') in
+    if has_dupes es
+    then type_error e "typecheck_exp: CStruct: Duplicates fields"
+    else if subtype c' s1 s2 && subtype c' s2 s1
+    then s1
     else type_error e "typecheck_exp: CStruct: Invalid Struct"
-    (*let field_check = List.fold_left (fun b (id',e') ->
-      match lookup_field_option id id' c with
-      | None    -> type_error e ("typecheck_exp: CStruct: Field " ^ id' ^ " does not exist")
-      | Some ty -> subtype c (typecheck_exp c e') ty
-    ) true es in*)
-    (*TRef (RStruct id)*)
-  | Proj (e,id)            -> failwith "typecheck_exp: Proj"
+  | Proj (e,id)            ->
+    let id' = match typecheck_exp c e with
+      | TRef (RStruct id) -> id
+      | _                 -> type_error e ("typecheck_exp: Proj: " ^ id ^ " does not refer to a struct") in
+    (match lookup_field_option id' id c with
+      | None    -> type_error e ("typecheck_exp: Proj: struct " ^ id' ^ " has no field " ^ id)
+      | Some ty -> ty)
   | Call (e,es)            ->
     let tylist1, retty = match typecheck_exp c e with
       | TRef(RFun(ts,retty)) -> ts,retty

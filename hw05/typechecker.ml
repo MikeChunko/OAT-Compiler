@@ -171,7 +171,13 @@ let rec typecheck_exp (c:Tctxt.t) (e:Ast.exp node) : Ast.ty =
   | CArr (ty,es)           -> failwith "typecheck_exp: CArr"
   | NewArr (ty,e)          -> failwith "typecheck_exp: NewArr"
   | NewArrInit (t,es,id,e) -> failwith "typecheck_exp: NewArrInit"
-  | Index (e1,e2)          -> failwith "typecheck_exp: Index"
+  | Index (e1,e2)          -> 
+    let e2_check = subtype c (typecheck_exp c e2) TInt in
+    (match e2_check, typecheck_exp c e1 with
+    | true,TRef (RArray ty)
+    | true,TNullRef (RArray ty) -> ty
+    | false,_                   -> type_error e "typecheck_exp: Index: The index must be an int"
+    | _                         -> type_error e "typecheck_exp: Index: Must be applied to a valid array")
   | Length e               -> failwith "typecheck_exp: Length"
   | CStruct (id, es)       ->
     let rec has_dupes : (Ast.id * Ast.exp node) list -> bool = function

@@ -175,7 +175,16 @@ let rec typecheck_exp (c:Tctxt.t) (e:Ast.exp node) : Ast.ty =
     if exp_check
     then TRef (RArray ty)
     else type_error e "typecheck_exp: CArr: One or more expressions are the incorrect type"
-  | NewArr (ty,e)          -> failwith "typecheck_exp: NewArr"
+  | NewArr (ty,e)          ->
+    let length_check = typecheck_exp c e = TInt in
+    let ty_check = match ty with
+      | TInt | TBool
+      | TNullRef _ -> true
+      | _          -> false in
+    (match length_check, ty_check with
+    | true,true -> TRef (RArray ty)
+    | false,_   -> type_error e "typecheck_exp: NewArr: The expression must be an int"
+    | _,false   -> type_error e "typecheck_exp: NewArr: Invalid array type")
   | NewArrInit (t,es,id,e) -> failwith "typecheck_exp: NewArrInit"
   | Index (e1,e2)          ->
     let e2_check = subtype c (typecheck_exp c e2) TInt in
@@ -184,7 +193,7 @@ let rec typecheck_exp (c:Tctxt.t) (e:Ast.exp node) : Ast.ty =
     | true,TNullRef (RArray ty) -> type_error e "typecheck_exp: Index: Cannot index a possibly null array"
     | false,_                   -> type_error e "typecheck_exp: Index: The index must be an int"
     | _                         -> type_error e "typecheck_exp: Index: Must be applied to a valid array")
-  | Length e               -> 
+  | Length e               ->
     (match typecheck_exp c e with
     | TRef (RArray ty)     -> TInt
     | TNullRef (RArray ty) -> type_error e "typecheck_exp: Length: Cannot get length of possibly null array"

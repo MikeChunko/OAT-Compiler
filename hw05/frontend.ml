@@ -619,7 +619,26 @@ let rec cmp_gexp c (tc : TypeCtxt.t) (e:Ast.exp node) : Ll.gdecl * (Ll.gid * Ll.
 
   (* STRUCT TASK: Complete this code that generates the global initializers for a struct value. *)
   | CStruct (id, cs) ->
-    failwith "todo: Cstruct case of cmp_gexp"
+    print_string id;
+    print_int (List.length cs);
+    let var_name = gensym "gstruct" in
+
+    let rec get_tuples = function
+    | h::tl ->
+      let id', node' = h in
+      let gd, gs' = cmp_gexp c tc node' in
+      (gd, gs') :: get_tuples tl
+    | [] -> []
+    in
+    let get_fst lst = List.map (fun i -> fst i) lst in
+    let get_snd lst = List.map (fun i -> snd i) lst in
+
+    let tuples = get_tuples cs in
+    let out = get_fst tuples in
+    let out_stream = List.flatten @@ get_snd tuples in
+
+    (Ptr (Namedt id), GGid var_name),
+    (var_name, (Namedt id, GStruct out)) :: out_stream
 
   | _ -> failwith "bad global initializer"
 

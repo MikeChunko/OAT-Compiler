@@ -278,7 +278,11 @@ let rec cmp_exp (tc : TypeCtxt.t) (c:Ctxt.t) (exp:Ast.exp node) : Ll.ty * Ll.ope
        The emitted code should yield the integer stored as part
        of the array struct representation. *)
   | Ast.Length e ->
-    failwith "todo:implement Ast.Length case"
+    let e_ty, e_id, e_s = cmp_exp tc c e in
+    let id = gensym "length" in
+    let id' = gensym "length" in
+    I64, Id id', e_s >:: I (id, Gep (e_ty, e_id, [Const 0L; Const 0L]))
+      >:: I (id', Load (Ptr I64, Id id))
 
   | Ast.Index (e, i) ->
     let ans_ty, ptr_op, code = cmp_exp_lhs tc c exp in

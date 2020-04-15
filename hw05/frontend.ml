@@ -469,7 +469,25 @@ and cmp_stmt (tc : TypeCtxt.t) (c:Ctxt.t) (rt:Ll.ty) (stmt:Ast.stmt node) : Ctxt
        - as in the if-then-else construct, you should jump to the common
          merge label after either block *)
   | Ast.Cast (typ, id, exp, notnull, null) ->
-    failwith "todo: implement Ast.Cast case"
+    let br_nn, br_n, br_m = gensym "br_notnull", gensym "br_isnull", gensym "merge" in
+    let cmp_name = gensym "null_check" in
+    let ty', op', s' = cmp_exp tc c exp in
+    let notnull_ctxt = Ctxt.add c id (Ptr ty', Id id) in
+    let notnull_block = cmp_block tc notnull_ctxt rt notnull in
+    let null_block = cmp_block tc c rt null in
+    c, s' >::
+        I (cmp_name, Icmp (Ne, ty', op', Null)) >::
+        T (Cbr (Id cmp_name, br_nn, br_n)) >::
+        L br_nn >::
+        E(id, Alloca ty') >::
+        (* Set up argument *)
+        I("", Store (ty', op', Id id)) >@
+        snd notnull_block >:: 
+        T(Br br_m) >::
+        L br_n >@
+        snd null_block >::
+        T(Br br_m) >::
+        L br_m 
 
   | Ast.While (guard, body) ->
     let guard_ty, guard_op, guard_code = cmp_exp tc c guard in
@@ -619,8 +637,6 @@ let rec cmp_gexp c (tc : TypeCtxt.t) (e:Ast.exp node) : Ll.gdecl * (Ll.gid * Ll.
 
   (* STRUCT TASK: Complete this code that generates the global initializers for a struct value. *)
   | CStruct (id, cs) ->
-    print_string id;
-    print_int (List.length cs);
     let var_name = gensym "gstruct" in
 
     let rec get_tuples = function

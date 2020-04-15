@@ -6,14 +6,12 @@ open Tctxt
 
 (* Error Reporting ---------------------------------------------------------- *)
 (* NOTE: Use type_error to report error messages for ill-typed programs. *)
-
 exception TypeError of string
 
 let type_error (l:'a node) err =
   let (_, (s, e), _) = l.loc in
   raise (TypeError (Printf.sprintf "[%d, %d] %s" s e err))
 
-(* initial context: G0 ------------------------------------------------------ *)
 (* The Oat types of the Oat built-in functions *)
 let builtins =
   [ "array_of_string",  ([TRef RString],  RetVal (TRef(RArray TInt)))
@@ -26,26 +24,21 @@ let builtins =
   ; "print_bool",       ([TBool], RetVoid)
   ]
 
-(* binary operation types --------------------------------------------------- *)
+(* Binary operation types --------------------------------------------------- *)
 let typ_of_binop : Ast.binop -> Ast.ty * Ast.ty * Ast.ty = function
   | Add | Mul | Sub | Shl | Shr | Sar | IAnd | IOr -> (TInt, TInt, TInt)
   | Lt | Lte | Gt | Gte -> (TInt, TInt, TBool)
   | And | Or -> (TBool, TBool, TBool)
   | Eq | Neq -> failwith "typ_of_binop called on polymorphic == or !="
 
-(* unary operation types ---------------------------------------------------- *)
+(* Unary operation types ---------------------------------------------------- *)
 let typ_of_unop : Ast.unop -> Ast.ty * Ast.ty = function
   | Neg | Bitnot -> (TInt, TInt)
   | Lognot       -> (TBool, TBool)
 
-(* subtyping ---------------------------------------------------------------- *)
+(* Subtyping ---------------------------------------------------------------- *)
 (* Decides whether H |- t1 <: t2
-    - assumes that H contains the declarations of all the possible struct types
-
-    - you will want to introduce additional (possibly mutually recursive)
-      helper functions to implement the different judgments of the subtyping
-      relation. We have included a template for subtype_ref to get you started.
-      (Don't forget about OCaml's 'and' keyword. *)
+    - assumes that H contains the declarations of all the possible struct types *)
 let rec subtype (c:Tctxt.t) (t1:ty) (t2:ty) : bool =
   match t1, t2 with
   | TBool, TBool
@@ -90,10 +83,9 @@ and subtype_retty (c:Tctxt.t) (t1:ret_ty) (t2:ret_ty) : bool =
   | RetVal t1', RetVal t2' -> subtype c t1' t2'
   | _                      -> false
 
-(* well-formed types -------------------------------------------------------- *)
+(* Well-formed types -------------------------------------------------------- *)
 (* Implement a (set of) functions that check that types are well formed according
    to the H |- t and related inference rules
-
     - the function should succeed by returning () if the type is well-formed
       according to the rules
     - the function should fail using the "type_error" helper function if the
@@ -120,20 +112,14 @@ and typecheck_rty (l:'a Ast.node) (tc:Tctxt.t) (t:rty) : unit =
 
 and typecheck_retty (l:'a Ast.node) (tc:Tctxt.t) (t:ret_ty) : unit =
   match t with
-  | RetVoid -> ()
+  | RetVoid   -> ()
   | RetVal ty -> typecheck_ty l tc ty
 
-(* A helper function to determine whether a type allows the null value *)
-let is_nullable_ty (t:Ast.ty) : bool =
-  match t with
-  | TNullRef _ -> true
-  | _          -> false
-
-(* Wrapps fst around a compare operation for comparison of association lists *)
+(* Wraps fst around a compare operation for comparison of association lists *)
 let assoc_compare (x:'a) (y:'a) : int =
   compare (fst x) (fst y)
 
-(* typechecking expressions ------------------------------------------------- *)
+(* Typechecking expressions ------------------------------------------------- *)
 (* Typechecks an expression in the typing context c, returns the type of the
    expression.  This function should implement the inference rules given in the
    oat.pdf specification.  There, they are written:
@@ -149,8 +135,7 @@ let assoc_compare (x:'a) (y:'a) : int =
 
    Uses the type_error function to indicate a (useful!) error message if the
    expression is not type correct.  The exact wording of the error message is
-   not important, but the fact that the error is raised, is important.  (Our
-   tests also do not check the location information associated with the error.)
+   not important, but the fact that the error is raised, is important.
 
    Notes: - Structure values permit the programmer to write the fields in any
    order (compared with the structure definition).  This means that, given the
@@ -258,8 +243,7 @@ let rec typecheck_exp (c:Tctxt.t) (e:Ast.exp node) : Ast.ty =
     then ty2
     else type_error e "typecheck_exp: Uop: Incorrect type"
 
-(* statements --------------------------------------------------------------- *)
-
+(* Statements --------------------------------------------------------------- *)
 (* Typecheck a statement
    This function should implement the statment typechecking rules from oat.pdf.
 
@@ -273,26 +257,7 @@ let rec typecheck_exp (c:Tctxt.t) (e:Ast.exp node) : Ast.ty =
        after this statement)
      - A boolean indicating the return behavior of a statement:
         false:  might not return
-        true: definitely returns
-
-        in the branching statements, the return behavior of the branching
-        statement is the conjunction of the return behavior of the two
-        branches: both both branches must definitely return in order for
-        the whole statement to definitely return.
-
-        Intuitively: if one of the two branches of a conditional does not
-        contain a return statement, then the entire conditional statement might
-        not return.
-
-        looping constructs never definitely return
-
-   Uses the type_error function to indicate a (useful!) error message if the
-   statement is not type correct.  The exact wording of the error message is
-   not important, but the fact that the error is raised, is important.  (Our
-   tests also do not check the location information associated with the error.)
-
-   - You will probably find it convenient to add a helper function that implements the
-     block typecheck rules. *)
+        true: definitely returns *)
 let rec typecheck_stmt (tc:Tctxt.t) (s:Ast.stmt node) (to_ret:ret_ty) : Tctxt.t * bool =
   match s.elt with
   | Assn (e1,e2)            ->
@@ -313,7 +278,7 @@ let rec typecheck_stmt (tc:Tctxt.t) (s:Ast.stmt node) (to_ret:ret_ty) : Tctxt.t 
     | Some _ -> type_error s ("typecheck_stmt: Decl: Duplicate definition of local id " ^ id))
   | Ret e                   ->
     (match e with
-    | None ->
+    | None   ->
       if to_ret = RetVoid
       then tc, true
       else type_error s "typecheck_stmt: Ret: Expected void return type"
@@ -341,13 +306,10 @@ let rec typecheck_stmt (tc:Tctxt.t) (s:Ast.stmt node) (to_ret:ret_ty) : Tctxt.t 
     if condition
     then tc, thn_returns && els_returns
     else type_error s "typecheck_stmt: If: Condition is not a bool"
-  | Cast (rty,id,e,thn,els) -> 
-    (*print_string ("RTY: " ^ (ml_string_of_reft rty) ^ "\n");
-    print_string ("ID: " ^ id ^"\n");
-    print_string ("E: " ^ (string_of_ty (typecheck_exp tc e)) ^ "\n");*)
+  | Cast (rty,id,e,thn,els) ->
     let tc' = match typecheck_exp tc e with
-      | TNullRef rty' -> 
-        if subtype_ref tc rty' rty 
+      | TNullRef rty' ->
+        if subtype_ref tc rty' rty
         then add_local tc id (TRef rty)
         else type_error s "typecheck_stmt: Cast: Invalid type to cast to"
       | _             -> tc in
@@ -384,9 +346,7 @@ and typecheck_block (tc:Tctxt.t) (b:Ast.block) (ret:ret_ty) : Tctxt.t * bool =
     then type_error h "typecheck_block: Early return"
     else typecheck_block tc' tl ret
 
-(* struct type declarations ------------------------------------------------- *)
-(* Here is an example of how to implement the TYP_TDECLOK rule, which is
-   is needed elswhere in the type system. *)
+(* Struct type declarations ------------------------------------------------- *)
 
 (* Helper function to look for duplicate field names *)
 let rec check_dups fs =
@@ -399,7 +359,7 @@ let typecheck_tdecl (tc:Tctxt.t) id fs  (l:'a Ast.node) : unit =
   then type_error l ("typecheck_tdecl: Repeated fields in " ^ id)
   else List.iter (fun f -> typecheck_ty l tc f.ftyp) fs
 
-(* function declarations ---------------------------------------------------- *)
+(* Function declarations ---------------------------------------------------- *)
 (* typecheck a function declaration
     - extends the local context with the types of the formal parameters to the
       function
@@ -412,7 +372,7 @@ let typecheck_fdecl (tc:Tctxt.t) (f:Ast.fdecl) (l:'a Ast.node) : unit =
   if returns then ()
   else type_error l ("typecheck_fdecl: Does not return")
 
-(* creating the typchecking context ----------------------------------------- *)
+(* Creating the typchecking context ----------------------------------------- *)
 
 (* The following functions correspond to the
    judgments that create the global typechecking context.

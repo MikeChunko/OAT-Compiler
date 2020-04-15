@@ -4,7 +4,7 @@ open Ll
 open Llutil
 open Ast
 
-(* instruction streams ------------------------------------------------------ *)
+(* Instruction streams ------------------------------------------------------ *)
 
 (* As in the last project, we'll be working with a flattened representation
    of LLVMlite programs to make emitting code easier. This version
@@ -34,33 +34,30 @@ let cfg_of_stream (code:stream) : Ll.cfg * (Ll.gid * Ll.gdecl) list  =
     (fun (gs, einsns, insns, term_opt, blks) e ->
       match e with
       | L l ->
-        begin match term_opt with
-        | None ->
+        (match term_opt with
+        | None      ->
         if (List.length insns) = 0 then (gs, einsns, [], None, blks)
         else failwith @@ Printf.sprintf "build_cfg: block labeled %s has\
                                           no terminator" l
         | Some term ->
-        (gs, einsns, [], None, (l, {insns; term})::blks)
-        end
+        (gs, einsns, [], None, (l, {insns; term})::blks))
       | T t  -> (gs, einsns, [], Some (Llutil.Parsing.gensym "tmn", t), blks)
       | I (uid,insn)  -> (gs, einsns, (uid,insn)::insns, term_opt, blks)
       | G (gid,gdecl) ->  ((gid,gdecl)::gs, einsns, insns, term_opt, blks)
       | E (uid,i) -> (gs, (uid, i)::einsns, insns, term_opt, blks)
-    ) ([], [], [], None, []) code
-  in
+    ) ([], [], [], None, []) code in
   match term_opt with
-  | None -> failwith "build_cfg: entry block has no terminator"
+  | None      -> failwith "build_cfg: entry block has no terminator"
   | Some term ->
     let insns = einsns @ insns in
     ({insns; term}, blks), gs
 
-(* compilation contexts ----------------------------------------------------- *)
+(* Compilation contexts ----------------------------------------------------- *)
 
 (* To compile OAT variables, we maintain a mapping of source identifiers to the
    corresponding LLVMlite operands. Bindings are added for global OAT variables
    and local variables that are in scope. *)
 module Ctxt = struct
-
   type t = (Ast.id * (Ll.ty * Ll.operand)) list
   let empty = []
 
@@ -85,13 +82,13 @@ module TypeCtxt = struct
   let lookup_field st_name f_name (c : t) =
     let rec lookup_field_aux f_name l =
       match l with
-      | [] -> failwith "TypeCtxt.lookup_field: Not_found"
+      | []     -> failwith "TypeCtxt.lookup_field: Not_found"
       | h :: t -> if h.fieldName = f_name then h.ftyp else lookup_field_aux f_name t in
     lookup_field_aux f_name (List.assoc st_name c)
 
   let rec index_of f l i =
     match l with
-    | [] -> None
+    | []     -> None
     | h :: t -> if h.fieldName = f then Some i else index_of f t (i + 1)
 
   (* Return the index of a field in the struct. *)
@@ -100,18 +97,18 @@ module TypeCtxt = struct
 
   let index_of_field (st:Ast.id) (f:Ast.id) (c:t) : int =
     match index_of_field_opt st f c with
-    | None -> failwith "index_of_field: Not found"
+    | None   -> failwith "index_of_field: Not found"
     | Some x -> x
 
   (* Return a pair of base type and index into struct *)
   let rec lookup_field_name (st:Ast.id) (f:Ast.id) (c : t) : (Ast.ty * Int64.t) =
     let fields = lookup st c in
     match index_of f fields 0 with
-    | None -> failwith "no such field"
+    | None   -> failwith "no such field"
     | Some x -> List.(nth fields x).ftyp, Int64.of_int x
 end
 
-(* compiling OAT types ------------------------------------------------------ *)
+(* Compiling OAT types ------------------------------------------------------ *)
 
 (* The mapping of source types onto LLVMlite is straightforward. Booleans and ints
    are represented as the the corresponding integer types. OAT strings are
@@ -120,11 +117,10 @@ end
    of elements in the following array.
 
    NOTE: structure types are named, so they compile to their named form *)
-
 let rec cmp_ty (ct : TypeCtxt.t) : Ast.ty -> Ll.ty = function
-  | Ast.TBool  -> I1
-  | Ast.TInt   -> I64
-  | Ast.TRef r -> Ptr (cmp_rty ct r)
+  | Ast.TBool      -> I1
+  | Ast.TInt       -> I64
+  | Ast.TRef r     -> Ptr (cmp_rty ct r)
   | Ast.TNullRef r -> Ptr (cmp_rty ct r)
 
 and cmp_ret_ty ct : Ast.ret_ty -> Ll.ty = function
@@ -231,7 +227,7 @@ let rec cmp_exp (tc : TypeCtxt.t) (c:Ctxt.t) (exp:Ast.exp node) : Ll.ty * Ll.ope
     let gid = gensym "str_arr" in
     let str_typ = str_arr_ty s in
     let uid = gensym "str" in
-      Ptr I8, Id uid, []
+    Ptr I8, Id uid, []
     >:: G(gid, (str_typ, GString s))
     >:: I(uid, Gep(Ptr str_typ, Gid gid, [Const 0L; Const 0L;]))
 
@@ -266,17 +262,13 @@ let rec cmp_exp (tc : TypeCtxt.t) (c:Ctxt.t) (exp:Ast.exp node) : Ll.ty * Ll.ope
 
   | Ast.Id id ->
     let t, op = Ctxt.lookup id c in
-    begin match t with
+    (match t with
       | Ptr (Fun _) -> t, op, []
-      | Ptr t ->
+      | Ptr t       ->
         let ans_id = gensym id in
         t, Id ans_id, [I(ans_id, Load(Ptr t, op))]
-      | _ -> failwith "broken invariant: identifier not a pointer"
-    end
+      | _           -> failwith "broken invariant: identifier not a pointer")
 
-  (* ARRAY TASK: complete this case to compile the length(e) expression.
-       The emitted code should yield the integer stored as part
-       of the array struct representation. *)
   | Ast.Length e ->
     let e_ty, e_id, e_s = cmp_exp tc c e in
     let id = gensym "length" in
@@ -329,7 +321,6 @@ let rec cmp_exp (tc : TypeCtxt.t) (c:Ctxt.t) (exp:Ast.exp node) : Ll.ty * Ll.ope
        - use the TypeCtxt operations to compute getelementptr indices
        - compile the initializer expression
        - store the resulting value into the structure *)
-
   | Ast.CStruct (id, l) ->
     let struct_ty, struct_op, struct_code = oat_alloc_struct tc id in
     let rec assign_elems = function
@@ -346,8 +337,7 @@ let rec cmp_exp (tc : TypeCtxt.t) (c:Ctxt.t) (exp:Ast.exp node) : Ll.ty * Ll.ope
         field_value_id, Bitcast(ty', op', out_ty);
         "", Store(out_ty, Id field_value_id, Id field_ptr_id)
       ] >@ assign_elems tl
-    | _ -> []
-    in    
+    | _ -> [] in
     struct_ty, struct_op, struct_code >@ assign_elems l
 
   | Ast.Proj (e, id) ->
@@ -370,19 +360,17 @@ and cmp_exp_lhs (tc : TypeCtxt.t) (c:Ctxt.t) (e:exp node) : Ll.ty * Ll.operand *
      Ast.proj case of the cmp_exp function (above).
 
      You will find the TypeCtxt.lookup_field_name function helpful. *)
-
   | Ast.Proj (e, i) ->
     let struct_ty, struct_op, struct_code = cmp_exp tc c e in
     let struct_name = match struct_ty with
-    | Ptr t -> begin match t with
+    | Ptr t -> (match t with
       | Namedt i -> i
-      | _ -> failwith "Incorrect type projecting"
-      end
-    | _ -> failwith "Incorrect type projecting" in
+      | _        -> failwith "Incorrect type projecting")
+    | _     -> failwith "Incorrect type projecting" in
     let ty', inner_ind = TypeCtxt.lookup_field_name struct_name i tc in
     let ret_ty = cmp_ty tc ty' in
     let elem_id = gensym "struct_index" in
-    ret_ty, Id (elem_id), struct_code >@ lift
+    ret_ty, Id elem_id, struct_code >@ lift
     [elem_id, Gep(struct_ty, struct_op, [Const 0L; Const inner_ind])]
 
   (* ARRAY TASK: Modify this index code to call 'oat_assert_array_length' before doing the
@@ -395,15 +383,15 @@ and cmp_exp_lhs (tc : TypeCtxt.t) (c:Ctxt.t) (e:exp node) : Ll.ty * Ll.operand *
     let _, ind_op, ind_code = cmp_exp tc c i in
     let ans_ty = match arr_ty with
       | Ptr (Struct [_; Array (_,t)]) -> t
-      | _ -> failwith "Index: indexed into non pointer" in
+      | _                             -> failwith "Index: indexed into non pointer" in
     let ptr_id, tmp_id, call_id = gensym "index_ptr", gensym "tmp", gensym "call" in
     let arr_len = gensym "arr_len" in
     ans_ty, (Id ptr_id),
     arr_code >@ ind_code >@ lift
       [
         arr_len, Bitcast (arr_ty, arr_op, Ptr I64);
-        "", Call (Void, Gid "oat_assert_array_length", [(Ptr I64, Id arr_len); I64, ind_op ]);
-        ptr_id, Gep(arr_ty, arr_op, [i64_op_of_int 0; i64_op_of_int 1; ind_op])
+        "", Call (Void, Gid "oat_assert_array_length", [(Ptr I64, Id arr_len); I64, ind_op]);
+        ptr_id, Gep(arr_ty, arr_op, [Const 0L; Const 1L; ind_op])
       ]
 
   | _ -> failwith "invalid lhs expression"
@@ -413,7 +401,7 @@ and cmp_call (tc : TypeCtxt.t) (c:Ctxt.t) (exp:Ast.exp node) (es:Ast.exp node li
   let (ts, rt) =
     match t with
     | Ptr (Fun (l, r)) -> l, r
-    | _ -> failwith "nonfunction passed to cmp_call" in
+    | _                -> failwith "nonfunction passed to cmp_call" in
   let args, args_code = List.fold_right2
     (fun e t (args, code) ->
       let arg_op, arg_code = cmp_exp_as tc c e t in
@@ -479,18 +467,18 @@ and cmp_stmt (tc : TypeCtxt.t) (c:Ctxt.t) (rt:Ll.ty) (stmt:Ast.stmt node) : Ctxt
     let notnull_block = cmp_block tc notnull_ctxt rt notnull in
     let null_block = cmp_block tc c rt null in
     c, s' >::
-        I (cmp_name, Icmp (Ne, ty', op', Null)) >::
-        T (Cbr (Id cmp_name, br_nn, br_n)) >::
-        L br_nn >::
-        E(id, Alloca ty') >::
-        (* Set up argument *)
-        I("", Store (ty', op', Id id)) >@
-        snd notnull_block >:: 
-        T(Br br_m) >::
-        L br_n >@
-        snd null_block >::
-        T(Br br_m) >::
-        L br_m 
+      I (cmp_name, Icmp (Ne, ty', op', Null)) >::
+      T (Cbr (Id cmp_name, br_nn, br_n)) >::
+      L br_nn >::
+      E(id, Alloca ty') >::
+      (* Set up argument *)
+      I("", Store (ty', op', Id id)) >@
+      snd notnull_block >::
+      T(Br br_m) >::
+      L br_n >@
+      snd null_block >::
+      T(Br br_m) >::
+      L br_m
 
   | Ast.While (guard, body) ->
     let guard_ty, guard_op, guard_code = cmp_exp tc c guard in
@@ -544,18 +532,17 @@ let get_struct_defns (p:Ast.prog) : TypeCtxt.t =
     match d with
     | Ast.Gtdecl { elt=(id, fs) } ->
       TypeCtxt.add ts id fs
-    | _ -> ts) p TypeCtxt.empty
+    | _                           -> ts) p TypeCtxt.empty
 
 (* Adds each function identifier to the context at an
    appropriately translated type.
-
    NOTE: The Gid of a function is just its source name *)
 let cmp_function_ctxt (tc : TypeCtxt.t) (c:Ctxt.t) (p:Ast.prog) : Ctxt.t =
   List.fold_left (fun c -> function
-    | Ast.Gfdecl { elt={ frtyp; fname; args } } ->
+    | Ast.Gfdecl {elt={frtyp; fname; args}} ->
       let ft = TRef (RFun (List.map fst args, frtyp)) in
       Ctxt.add c fname (cmp_ty tc ft, Gid fname)
-    | _ -> c
+    | _                                     -> c
   ) c p
 
 (* Populate a context with bindings for global variables
@@ -566,18 +553,18 @@ let cmp_function_ctxt (tc : TypeCtxt.t) (c:Ctxt.t) (p:Ast.prog) : Ctxt.t =
    for global function values). *)
 let cmp_global_ctxt (tc : TypeCtxt.t) (c:Ctxt.t) (p:Ast.prog) : Ctxt.t =
   let gexp_ty c = function
-    | Id id -> fst (Ctxt.lookup id c)
+    | Id id   -> fst (Ctxt.lookup id c)
     | CStruct (t, cs) -> Ptr (Namedt t)
     | CNull r -> cmp_ty tc (TNullRef r)
     | CBool b -> I1
     | CInt i  -> I64
     | CStr s  -> Ptr I8
     | CArr (u, cs) -> Ptr (Struct [I64; Array(0, cmp_ty tc u)])
-    | x -> failwith ( "bad global initializer: " ^ (Astlib.string_of_exp (no_loc x))) in
+    | x       -> failwith ( "bad global initializer: " ^ (Astlib.string_of_exp (no_loc x))) in
   List.fold_left (fun c -> function
-    | Ast.Gvdecl { elt={ name; init } } ->
+    | Ast.Gvdecl {elt={name; init}} ->
       Ctxt.add c name (Ptr (gexp_ty c init.elt), Gid name)
-    | _ -> c) c p
+    | _                             -> c) c p
 
 (* Compile a function declaration in global context c. Return the LLVMlite cfg
    and a list of global declarations containing the string literals appearing
@@ -618,7 +605,7 @@ let rec cmp_gexp c (tc : TypeCtxt.t) (e:Ast.exp node) : Ll.gdecl * (Ll.gid * Ll.
   | CInt i  -> (I64, GInt i), []
   | Id id   -> ((fst @@ Ctxt.lookup id c), GGid id), []
 
-  | CStr s ->
+  | CStr s  ->
     let gid = gensym "str" in
     let ll_ty = str_arr_ty s in
     let cast = GBitcast (Ptr ll_ty, GGid gid, Ptr I8) in
@@ -646,18 +633,14 @@ let rec cmp_gexp c (tc : TypeCtxt.t) (e:Ast.exp node) : Ll.gdecl * (Ll.gid * Ll.
     | h::tl ->
       let id', node' = h in
       let gd, gs' = cmp_gexp c tc node' in
-      (gd, gs') :: get_tuples tl
-    | [] -> []
-    in
-    let get_fst lst = List.map (fun i -> fst i) lst in
-    let get_snd lst = List.map (fun i -> snd i) lst in
-
+      (gd, gs')::(get_tuples tl)
+    | []    -> [] in
     let tuples = get_tuples cs in
-    let out = get_fst tuples in
-    let out_stream = List.flatten @@ get_snd tuples in
+    let out, out_stream = List.map (fun i -> fst i) tuples,
+      List.flatten @@ List.map (fun i -> snd i) tuples in
 
     (Ptr (Namedt id), GGid var_name),
-    (var_name, (Namedt id, GStruct out)) :: out_stream
+    (var_name, (Namedt id, GStruct out)) ::out_stream
 
   | _ -> failwith "bad global initializer"
 
@@ -682,15 +665,15 @@ let tctxt_to_tdecls c =
 (* Compile a OAT program to LLVMlite *)
 let cmp_prog (p:Ast.prog) : Ll.prog =
   let tc = get_struct_defns p in
-  (* add built-in functions to context *)
+  (* Add built-in functions to context *)
   let init_ctxt =
     List.fold_left (fun c (i, t) -> Ctxt.add c i (Ll.Ptr t, Gid i))
       Ctxt.empty builtins in
   let fc = cmp_function_ctxt tc init_ctxt p in
 
-  (* build global variable context *)
+  (* Build global variable context *)
   let c = cmp_global_ctxt tc fc p in
-  (* compile functions and global variables *)
+  (* Compile functions and global variables *)
   let fdecls, gdecls =
     List.fold_right (fun d (fs, gs) ->
       match d with
@@ -703,6 +686,6 @@ let cmp_prog (p:Ast.prog) : Ll.prog =
       | Ast.Gtdecl _ ->
         fs, gs
     ) p ([], []) in
-  (* gather external declarations *)
+  (* Gather external declarations *)
   let edecls = internals @ builtins in
   { tdecls = tctxt_to_tdecls tc; gdecls; fdecls; edecls }

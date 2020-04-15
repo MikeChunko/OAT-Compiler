@@ -341,7 +341,19 @@ let rec typecheck_stmt (tc:Tctxt.t) (s:Ast.stmt node) (to_ret:ret_ty) : Tctxt.t 
     if condition
     then tc, thn_returns && els_returns
     else type_error s "typecheck_stmt: If: Condition is not a bool"
-  | Cast (rty,id,e,thn,els) -> failwith "typecheck_stmt: Cast"
+  | Cast (rty,id,e,thn,els) -> 
+    (*print_string ("RTY: " ^ (ml_string_of_reft rty) ^ "\n");
+    print_string ("ID: " ^ id ^"\n");
+    print_string ("E: " ^ (string_of_ty (typecheck_exp tc e)) ^ "\n");*)
+    let tc' = match typecheck_exp tc e with
+      | TNullRef rty' -> 
+        if subtype_ref tc rty' rty 
+        then add_local tc id (TRef rty)
+        else type_error s "typecheck_stmt: Cast: Invalid type to cast to"
+      | _             -> tc in
+    let _,thn_returns = typecheck_block tc' thn to_ret in
+    let _,els_returns = typecheck_block tc els to_ret in
+    tc, thn_returns && els_returns
   | For (vlst,e,stmt,slst)     ->
     let tc' = List.fold_left (fun c (id,e) ->
       add_local c id (typecheck_exp c e)

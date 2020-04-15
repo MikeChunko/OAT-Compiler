@@ -342,7 +342,7 @@ let rec cmp_exp (tc : TypeCtxt.t) (c:Ctxt.t) (exp:Ast.exp node) : Ll.ty * Ll.ope
       let elem_index = TypeCtxt.index_of_field id elem_id tc in
       let ty', op', s' = cmp_exp tc c exp_node in
       let out_ty = TypeCtxt.lookup_field_name id elem_id tc in
-      let out_ty = cmp_ty tc (fst out_ty) in lift
+      let out_ty = cmp_ty tc (fst out_ty) in s' >@ lift
       [
         field_ptr_id, Gep(struct_ty, struct_op, [Const 0L; i64_op_of_int elem_index]);
         field_value_id, Bitcast(ty', op', out_ty);

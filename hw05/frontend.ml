@@ -332,8 +332,6 @@ let rec cmp_exp (tc : TypeCtxt.t) (c:Ctxt.t) (exp:Ast.exp node) : Ll.ty * Ll.ope
 
   | Ast.CStruct (id, l) ->
     let struct_ty, struct_op, struct_code = oat_alloc_struct tc id in
-    print_int (List.length l);
-    
     let rec assign_elems = function
     | h::tl ->
       let field_ptr_id = gensym "get_field_ptr_id" in
@@ -399,9 +397,14 @@ and cmp_exp_lhs (tc : TypeCtxt.t) (c:Ctxt.t) (e:exp node) : Ll.ty * Ll.operand *
       | Ptr (Struct [_; Array (_,t)]) -> t
       | _ -> failwith "Index: indexed into non pointer" in
     let ptr_id, tmp_id, call_id = gensym "index_ptr", gensym "tmp", gensym "call" in
+    let arr_len = gensym "arr_len" in
     ans_ty, (Id ptr_id),
     arr_code >@ ind_code >@ lift
-      [ptr_id, Gep(arr_ty, arr_op, [i64_op_of_int 0; i64_op_of_int 1; ind_op]) ]
+      [
+        arr_len, Bitcast (arr_ty, arr_op, Ptr I64);
+        "", Call (Void, Gid "oat_assert_array_length", [(Ptr I64, Id arr_len); I64, ind_op ]);
+        ptr_id, Gep(arr_ty, arr_op, [i64_op_of_int 0; i64_op_of_int 1; ind_op])
+      ]
 
   | _ -> failwith "invalid lhs expression"
 

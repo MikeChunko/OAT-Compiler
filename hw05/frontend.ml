@@ -312,9 +312,47 @@ let rec cmp_exp (tc : TypeCtxt.t) (c:Ctxt.t) (exp:Ast.exp node) : Ll.ty * Ll.ope
      you could write the loop using abstract syntax and then call cmp_stmt to
      compile that into LL code... *)
   | Ast.NewArrInit (elt_ty, e1, id, e2) ->
+    let id' = no_loc @@ Id id in
     let _, size_op, size_code = cmp_exp tc c e1 in
+    (* 
+    (match size_op with
+    | Const i -> print_int @@ Int64.to_int i
+    | _ -> ()
+    ) 
+    ;
+    *)
     let arr_ty, arr_op, alloc_code = oat_alloc_array tc elt_ty size_op in
-    arr_ty, arr_op, size_code >@ alloc_code
+    let cur_arr, length_var, final_array =
+      gensym "arr_init", gensym "arr_init_len", gensym "arr_init_ret" in
+    let c = Ctxt.add c cur_arr (Ptr arr_ty, Id cur_arr) in
+    let c = Ctxt.add c length_var (Ptr I64, Id length_var) in
+    let arr_id_code = lift
+      [
+        cur_arr, Alloca arr_ty; 
+        "", Store (arr_ty, arr_op, Id cur_arr)
+      ] in
+    let get_length_block = lift
+      [
+        length_var, Alloca I64;
+        "", Store (I64, size_op, Id length_var)
+      ] in
+    let bounds_check =
+      no_loc (Bop(Lt, id', no_loc @@ Id length_var))
+    in let inc_i =
+      no_loc @@ Assn(
+        id',
+        no_loc @@ Bop(Add, id', no_loc (CInt 1L) )) in
+    let for_loop = no_loc @@
+      For([id, no_loc (CInt 0L)], Some bounds_check, Some inc_i,
+      (* Loop body *)
+      [
+        no_loc @@ Assn(
+        no_loc @@ Index(no_loc (Id cur_arr), id'), e2)
+      ]) in
+    let _, compiled_ast = cmp_stmt tc c Void for_loop in
+    arr_ty, Id final_array,
+      size_code >@ alloc_code >@ arr_id_code >@ get_length_block >@ compiled_ast >@ lift
+      [final_array, Load(Ptr arr_ty, Id cur_arr)]
 
    (* STRUCT TASK: complete this code that compiles struct expressions.
       For each field component of the struct

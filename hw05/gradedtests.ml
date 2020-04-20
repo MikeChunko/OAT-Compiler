@@ -195,26 +195,26 @@ let hw4_path_tests = [
 ]
 
 let hw4_easy_tests = [
-    ("hw4programs/run26.oat", "", "0");
-    ("hw4programs/run27.oat", "", "99");
-    ("hw4programs/run28.oat", "", "18");
-    ("hw4programs/run29.oat", "", "1");
-    ("hw4programs/run30.oat", "", "9");
-    ("hw4programs/run31.oat", "", "9");
-    ("hw4programs/run13.oat", "", "1");
-    ("hw4programs/run32.oat", "", "33");
-    ("hw4programs/run21.oat", "", "99");
-    ("hw4programs/run33.oat", "", "1");
-    ("hw4programs/run34.oat", "", "66");
-    ("hw4programs/run38.oat", "", "31");
-    ("hw4programs/run39.oat", "a", "2");
-    ("hw4programs/run40.oat", "", "8");
-    ("hw4programs/run41.oat", "", "3");
-    ("hw4programs/run42.oat", "", "2");
-    ("hw4programs/run49.oat", "", "abc0");
-    ("hw4programs/run50.oat", "", "abcde0");
-    ("hw4programs/run60.oat", "", "85");
-    ("hw4programs/run61.oat", "", "3410");
+  ("hw4programs/run26.oat", "", "0");
+  ("hw4programs/run27.oat", "", "99");
+  ("hw4programs/run28.oat", "", "18");
+  ("hw4programs/run29.oat", "", "1");
+  ("hw4programs/run30.oat", "", "9");
+  ("hw4programs/run31.oat", "", "9");
+  ("hw4programs/run13.oat", "", "1");
+  ("hw4programs/run32.oat", "", "33");
+  ("hw4programs/run21.oat", "", "99");
+  ("hw4programs/run33.oat", "", "1");
+  ("hw4programs/run34.oat", "", "66");
+  ("hw4programs/run38.oat", "", "31");
+  ("hw4programs/run39.oat", "a", "2");
+  ("hw4programs/run40.oat", "", "8");
+  ("hw4programs/run41.oat", "", "3");
+  ("hw4programs/run42.oat", "", "2");
+  ("hw4programs/run49.oat", "", "abc0");
+  ("hw4programs/run50.oat", "", "abcde0");
+  ("hw4programs/run60.oat", "", "85");
+  ("hw4programs/run61.oat", "", "3410");
 ]
 
 let hw4_medium_tests = [
@@ -333,7 +333,6 @@ let typecheck_subtyping_error_tests =
   ; "hw5programs/tc_subtyping_err7.oat"
   ; "hw5programs/tc_subtyping_err8.oat"
   ]
-
 
 let typecheck_statement_error_tests =
   [ "hw5programs/tc_error_early_return.oat";

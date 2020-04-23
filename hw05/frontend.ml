@@ -501,16 +501,17 @@ and cmp_stmt (tc : TypeCtxt.t) (c:Ctxt.t) (rt:Ll.ty) (stmt:Ast.stmt node) : Ctxt
     let br_nn, br_n, br_m = gensym "br_notnull", gensym "br_isnull", gensym "merge" in
     let cmp_name = gensym "null_check" in
     let ty', op', s' = cmp_exp tc c exp in
-    let notnull_ctxt = Ctxt.add c id (Ptr ty', Id id) in
+    let newid = gensym id in
+    let notnull_ctxt = Ctxt.add c id (Ptr ty', Id newid) in
     let notnull_block = cmp_block tc notnull_ctxt rt notnull in
     let null_block = cmp_block tc c rt null in
     c, s' >::
       I (cmp_name, Icmp (Ne, ty', op', Null)) >::
       T (Cbr (Id cmp_name, br_nn, br_n)) >::
       L br_nn >::
-      E(id, Alloca ty') >::
+      E(newid, Alloca ty') >::
       (* Set up argument *)
-      I("", Store (ty', op', Id id)) >@
+      I("", Store (ty', op', Id newid)) >@
       snd notnull_block >::
       T(Br br_m) >::
       L br_n >@

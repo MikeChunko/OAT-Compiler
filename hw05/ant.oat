@@ -1,0 +1,79 @@
+/* Langton's Ant simulator by Leo Ouyang. Langton's Ant, like the Game of Life, is a 2-d, Turing-complete cellular automata.
+I pledge my honor that I have abided the the Stevens Honor Code*/
+
+global board = int [][] null;
+
+struct Ant
+{
+    int direction;
+    int x;
+    int y
+}
+
+int program( int argc, string[] argv)
+{
+board = new int [][11] {i -> new int [11]};
+var a = new Ant{direction = 0; x = 5; y = 5};
+var steps = 10;
+while (steps > 0)
+{
+    if (a.x < 0 | a.x >= 11 | a.y < 0 |  a.y >= 11)
+    {
+        print_string("Out of memory!\n");
+        steps = 0;
+    }
+    else
+    {   
+        if? (int[][] x = board)
+        {
+            if (x[a.y][a.x] == 0)
+            {
+                x[a.y][a.x] = 1;
+                a.direction = a.direction + 1;
+            }
+            else
+            {
+                x[a.y][a.x] = 0;
+                a.direction = a.direction - 1;
+            }
+        }
+    }
+    if (a.direction > 3 )
+    {
+        a.direction = 0;
+    }
+    if (a.direction == 0)
+    {
+        a.x = a.x - 1;
+
+    }
+    else if (a.direction == 1)
+    {
+        a.y = a.y - 1;
+    }
+    else if (a.direction == 2)
+    {
+        a.x = a.x + 1;
+    }
+    else 
+    {
+        a.y = a.y + 1;
+    }
+
+    steps = steps - 1;
+}   
+
+for (var i = 0; i < 11; i = i + 1;)
+{
+    for (var j = 0; j < 11; j = j + 1;)
+    {
+        if? (int[][] x = board)
+        {
+            print_int(x[i][j]);
+            print_string(" ");
+        }
+    }
+    print_string("\n");
+}
+return 0;
+}

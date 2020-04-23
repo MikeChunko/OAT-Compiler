@@ -59,17 +59,17 @@ bool contains_string(Trie t, int[] s, int len) {
 
         cur_char = cur_char - 65;
         if? (TrieNode node = n) {
-            n = node.children[cur_char];
+                n = node.children[cur_char];
         } else {
             return false;
         }
     }
 
-        if? (TrieNode node = n) {
-            return node.end;
-        } else {
-            return false;
-        }
+    if? (TrieNode node = n) {
+        return node.end;
+    } else {
+        return false;
+    }
 }
 
 int program(int argc, string[] argv) {
@@ -78,12 +78,11 @@ int program(int argc, string[] argv) {
         return 1;
     }
 
-    var t = new Trie {
-        start = TrieNode null
-    };
-    t.start = new TrieNode {
-        end = false;
-        children = new TrieNode?[26]{ x -> TrieNode null }
+    var t = new Trie{
+        start = new TrieNode {
+            end = false;
+            children = new TrieNode?[26]{ x -> TrieNode null }
+        }
     };
 
     for (var i = 1; i < argc; i = i + 1;) {

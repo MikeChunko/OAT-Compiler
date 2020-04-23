@@ -1,0 +1,17 @@
+struct Total {
+  int val
+}
+
+int tri(int n) {
+  var temp = new Total {val=0};
+  if (n == 1) {
+     temp = new Total {val=1};
+  } else {
+    temp = new Total{val = (n + tri (n-1))};
+  } 
+  return temp.val;
+}
+
+int program (int argc, string[] argv) {
+  return tri(6);
+}

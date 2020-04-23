@@ -1,0 +1,59 @@
+struct Point {
+  int x;
+  int y
+}
+
+struct Node {
+  (Point) data;
+  Node? next
+}
+
+struct Shape {
+  string? name;
+  Node? head
+}
+
+global shape = new Shape{name = string null; head = Node null};
+
+Node add_point (Node? head, Point to_add){
+  if?(Node temp = head){
+    return add_point(temp.next, to_add);
+  }
+  var temp = new Node{data = to_add; next = Node null};
+  return temp;
+}
+      
+
+void update_shape (Point new_point, string? new_name){
+  if?(string temp = new_name){
+    shape = new Shape{name = new_name; head = add_point(shape.head, new_point)};
+    return;
+  }
+  shape = new Shape{name = shape.name; head = add_point(shape.head, new_point)};
+  return;
+}
+
+int get_val(Node? current){
+  if?(Node temp = current){
+    if?(Node temp2 = temp.next){
+      return get_val(temp.next);
+    }
+    return temp.data.x + temp.data.y;
+  }
+  return -1;
+}
+
+int program(int argc, string[] argv) {
+  var point1 = new Point{x = 0; y = 0};
+  var point2 = new Point{x = 1; y = 0};
+  var point3 = new Point{x = 1; y = 1};
+  var point4 = new Point{x = 10; y = 2};
+  update_shape(point1, string null);
+  update_shape(point2, string null);
+  update_shape(point3, string null);
+  update_shape(point4, "rectangle");
+  if?(string named = shape.name){
+    return get_val(shape.head);
+  }
+  return -1;
+}

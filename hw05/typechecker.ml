@@ -64,7 +64,10 @@ and subtype_struct (c:Tctxt.t) (id1:id) (id2:id) : bool =
     List.fold_left (fun b x ->
       b && match lookup_field_option id1 x.fieldName c with
       | None    -> false
-      | Some ty -> ty = x.ftyp) true flst
+      | Some ty -> (match ty,x.ftyp with
+        | TNullRef ty', TRef x'
+        | TRef ty', TNullRef x' -> subtype_ref c ty' x'
+        | _                     -> ty = x.ftyp)) true flst
 
 and subtype_func (c:Tctxt.t) (ts1:ty list) (rt1:ret_ty) (ts2:ty list) (rt2:ret_ty) : bool =
   if subtype_retty c rt1 rt2

@@ -1,3 +1,4 @@
+open Ast
 open Assert
 open X86
 open Driver
@@ -164,7 +165,104 @@ let tetrate_tests = [
   ("tetrate.oat", "", "all clear0")
 ]
 
+let typecheck_unit_tests = [
+  "subtype_intarray_intarray",
+   (fun () ->
+       if Typechecker.subtype Tctxt.empty (TRef (RArray TInt)) (TRef (RArray TInt)) then ()
+       else failwith "should not fail")
+; ("no_subtype_intarray_boolarray",
+   (fun () ->
+       if Typechecker.subtype Tctxt.empty (TRef (RArray TInt)) (TRef (RArray TBool)) then
+         failwith "should not succeed" else ())
+  )
+]
+
+let struct_context : (Ast.id * (Ast.id * Ast.ty) list) list -> Tctxt.t =
+  List.fold_left (fun tc (sname, fields) ->
+      let field_spec = List.map (fun (f, t) -> Ast.{fieldName=f; ftyp=t}) fields in
+      Tctxt.add_struct tc sname field_spec) Tctxt.empty
+
+let (=>) arg_types return_type =
+  Ast.(TRef (RFun (arg_types, match return_type with Some t -> RetVal t | None -> RetVoid)))
+
+let subtype_tests1 = [
+    "subtype_t[]_t[]?",
+    (fun () ->
+      if not @@ Typechecker.subtype Tctxt.empty (TRef (RArray TInt)) (TNullRef (RArray TInt))
+      then failwith "int[] !<: int[]?"
+    );
+    "subtype_structA_structB",
+    (fun () ->
+      let tc = struct_context ["A", []; "B", ["x", TInt]] in
+      if not @@ Typechecker.subtype tc (TRef (RStruct "B")) (TRef (RStruct "B"))
+      then failwith "B !<: A"
+    );
+    "subtype_C_B",
+    (fun () ->
+      let tc = struct_context ["A", []; "B", ["x", TInt]; "C", ["x", TInt; "y", TBool]] in
+      if not @@ Typechecker.subtype tc (TRef (RStruct "C")) (TRef (RStruct "B"))
+      then failwith "C !<: B");
+    "subtype_C->B_B->B",
+    (fun () ->
+      let tc = struct_context ["A", [];
+                               "B", ["x", TInt; "y", TInt];
+                               "C", ["x", TInt; "y", TInt; "z", TInt]] in
+      let c = Ast.TRef (RStruct "C") in
+      let b = Ast.TRef (RStruct "B") in
+      if not @@ Typechecker.subtype tc ([b] => Some b) ([c] => Some b)
+      then failwith "C !<: B");
+    "subtype_C->B_B->B",
+    (fun () ->
+      let tc = struct_context ["A", []; "B", ["x", TInt]; "C", ["x", TInt; "y", TBool]] in
+      let c = Ast.TRef (RStruct "C") in
+      let b = Ast.TRef (RStruct "B") in
+      if Typechecker.subtype tc ([c] => Some b) ([b] => Some b)
+      then failwith "C <: B should not imply ");
+    "subtype_S_T",
+    (fun () ->
+      let tc = struct_context ["S", []; "T", []] in
+      let s, t = Ast.(TRef (RStruct "S"), TRef (RStruct "T")) in
+      if not @@ Typechecker.subtype tc s t
+      then failwith "S !<: T"
+    );
+    "subtype_T_S",
+    (fun () ->
+      let tc = struct_context ["S", []; "T", []] in
+      let s, t = Ast.(TRef (RStruct "S"), TRef (RStruct "T")) in
+      if not @@ Typechecker.subtype tc t s
+      then failwith "T !<: S"
+    )
+  ]
+
+let studenttests1 = [
+    (
+      "trie.oat",
+      "this is a list of words to store @ this is a list of words to look up",
+      "'this' found\n'is' found\n'a' found\n'list' found\n'of' found\n'words' found\n'to' found\n'look' not found\n'up' not found0"
+    )
+  ]
+
+exception MyError
+let my_tests = [
+  ("typechecked_bop",
+  (fun () ->
+      if (Typechecker.typecheck_exp Tctxt.empty (no_loc (Bop(Mul,no_loc (CInt(2L)), no_loc (CInt(2L))))) = TInt) 
+      then ()
+      else failwith "should not fail") )                                                                                   
+; ("failed_typecheck_bop",
+  fun () -> (try ( ( let x = Typechecker.typecheck_exp Tctxt.empty (no_loc (Bop(Mul,no_loc (CInt(2L)), no_loc (CBool(true))))) in (if(x=TInt) then (raise MyError) else () ) ) )
+   with  Typechecker.TypeError(_) -> () | MyError -> failwith "should not have passed"
+      ) ) 
+]
+
 let provided_tests : suite = [
   GradedTest("custom unit tests", 1, unit_tests);
   GradedTest("tetrate tests", 0, executed_oat_file tetrate_tests);
+  GradedTest("subtype unit tests", 1, typecheck_unit_tests);
+  GradedTest("Execution Tests", 1, executed_oat_file [
+    ("doubly-linked-list.oat", "", "3")
+  ]);
+  GradedTest ("Ed's subtyping tests", 4, subtype_tests1);
+  GradedTest ("Elliot's OAT trie test", 4, executed_oat_file studenttests1);
+  GradedTest("my_unit_test", 0,my_tests);
 ]

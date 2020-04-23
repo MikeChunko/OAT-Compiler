@@ -1,0 +1,113 @@
+struct TrieNode {
+    bool end;
+    TrieNode?[] children
+}
+
+struct Trie {
+    TrieNode? start
+}
+
+TrieNode unwrap(TrieNode? ref) {
+    if?(TrieNode n = ref) {
+        return n;
+    } else {
+        return new TrieNode {
+            end = false;
+            children = new TrieNode?[26]{ x -> TrieNode null }
+        };
+    }
+}
+
+void insert_string(Trie t, int[] s, int len) {
+    var j = 0;
+    var cur_char = 0;
+
+    t.start = unwrap(t.start);
+    var n = unwrap(t.start);
+
+    for (var i = 0; i < len; i = i + 1;) {
+
+        cur_char = s[i];
+        if (cur_char > 90) {
+            cur_char = cur_char - 32;
+        }
+
+        cur_char = cur_char - 65;
+
+        n.children[cur_char] = unwrap(n.children[cur_char]);
+
+        n = unwrap(n.children[cur_char]);
+    }
+
+    n.end = true;
+
+    return;
+}
+
+bool contains_string(Trie t, int[] s, int len) {
+    if (s[0] == 0) {
+        return false;
+    }
+
+    var n = t.start;
+    var cur_char = 0;
+    for (var i = 0; i < len; i = i + 1;) {
+        cur_char = s[i];
+        if (cur_char > 90) {
+            cur_char = cur_char - 32;
+        }
+
+        cur_char = cur_char - 65;
+        if? (TrieNode node = n) {
+            n = node.children[cur_char];
+        } else {
+            return false;
+        }
+    }
+
+        if? (TrieNode node = n) {
+            return node.end;
+        } else {
+            return false;
+        }
+}
+
+int program(int argc, string[] argv) {
+    if (argc < 2) {
+        print_string("Must provide at least one string to insert.\nusage: <insert> @ <search>\n\n\t<insert>: space-separated list of strings to insert\n\t<serach>: space-separated list of strings to search\n");
+        return 1;
+    }
+
+    var t = new Trie {
+        start = TrieNode null
+    };
+    t.start = new TrieNode {
+        end = false;
+        children = new TrieNode?[26]{ x -> TrieNode null }
+    };
+
+    for (var i = 1; i < argc; i = i + 1;) {
+        var len = length_of_string(argv[i]);
+        var cur_arg = array_of_string(argv[i]);
+        if (cur_arg[0] == 64) {
+            for (var j = i+1; j < argc; j = j + 1; ) {
+                var len2 = length_of_string(argv[j]);
+                cur_arg = array_of_string(argv[j]);
+                var contains = contains_string(t, cur_arg, len2);
+                print_string("'");
+                print_string(argv[j]);
+                print_string("'");
+                if (contains == false) {
+                    print_string(" not");
+                }
+
+                print_string(" found\n");
+            }
+            return 0;
+        }
+
+        insert_string(t, cur_arg, len);
+    }
+
+    return 0;
+}

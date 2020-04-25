@@ -1,0 +1,78 @@
+
+void pretty_print_array(int[] arr){
+  var len = length(arr);
+  print_string("[");
+  for(var x = 0; x < len - 1; x = x + 1;){
+    print_int(arr[x]);
+    print_string(", ");
+  }
+  if(!(len == 0)) {
+    print_int(arr[len - 1]);
+  }
+  print_string("]");
+  return;
+}
+
+int min_path(int[][] arr){
+  var return_val = 0;
+
+  var dp = new int[]?[length(arr) + 1];
+  for(var i = 0, var bound = length(arr) + 1; i < bound; i = i + 1;){
+      dp[i] = new int[length(arr[0]) + 1];
+  }
+
+
+  for(var i = 1, var bound = length(arr) + 1; i < bound; i = i + 1;){
+      for(var j = 1, var j_bound = length(arr[0]) + 1; j < j_bound; j = j + 1;){
+          var prev = 0;
+          if?(int[] dp_i = dp[i]){
+              if?(int[] dp_i1 = dp[i - 1]){
+                  if(dp_i[j-1] < dp_i1[j]) {
+                    prev = arr[i-1][j-1] + dp_i[j-1];
+                  } else {
+                    prev = arr[i-1][j-1] + dp_i1[j];
+                  }
+              }
+              dp_i[j] = prev;
+          }
+      }
+  }
+  if?(int[] new_dp = dp[length(dp) - 1]){
+      return_val = new_dp[length(new_dp) - 1];
+  } else {
+      return_val = -1;
+  }
+
+  var i = length(arr);
+  var j = length(arr[0]);
+  var index = i + j - 2;
+  var path = new int[i + j - 1];
+
+  while(i > 0 & j > 0){
+      if?(int[] dp_i = dp[i]){
+        path[index] = arr[i-1][j-1];
+        index = index - 1; 
+        if?(int[] dp_i1 = dp[i - 1]){
+            if(dp_i[j-1] < dp_i1[j]) {
+                j = j - 1;
+            } else {
+                i = i - 1;
+            }
+        }
+      }
+  }
+
+  print_string("The shortest path was: ");
+  pretty_print_array(path);
+  print_string(" with sum ");
+  print_int(return_val);
+  print_string("\n");
+
+  return return_val;
+}
+
+int program (int argc, string[] argv) {
+  var matrix = new int[][10]{i -> new int[10]{j -> i * j}};
+  var discard = min_path(matrix);
+  return 0;
+}

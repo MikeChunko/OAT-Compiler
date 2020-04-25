@@ -1,0 +1,139 @@
+/* Jared Pincus, Owen Zila
+ * I pledge my honor that I have abided by the Stevens Honor System */
+
+/* Integer X is an amicable number if an integer Y exists such that
+ * Y != X and the sum of the factors of X (excluding X) equals Y
+ * and the sum of the factors of Y (excluding Y) equals X. */
+
+/* Nodes to build linked list */
+struct ListNode {
+    int data;
+    ListNode? next
+}
+
+/* Data for one integer,
+ * including its potential amicable partners
+ * and the sum of its factors */
+struct Number {
+    int factor_sum;
+    ListNode? head;
+    (Number, int) -> void add_factor;
+    (Number, int) -> bool has_partner;
+    (Number, int) -> void add_partner
+}
+
+/* Add a factor to a number's partial factor sum */
+void add_factor(Number number, int factor) {
+    number.factor_sum = number.factor_sum + factor;
+    return;
+}
+
+/* Check whether linked list of partners contains a certain integer */
+bool has_partner(Number number, int partner) {
+    if? (ListNode curr = number.head) {
+        while (true) {
+            if (curr.data == partner) {
+                return true;
+            }
+            if? (ListNode next = curr.next) {
+                curr = next;
+            } else {
+                return false;
+            }
+        }
+    }
+    return false;
+}
+
+/* Add an integer to number's linked list of partners */
+void add_partner(Number number, int partner) {
+    number.head = new ListNode{data=partner; next=number.head};
+    return;
+}
+
+/* Convert string to int
+ * Assumes valid input matching "-?[0-9]+" */
+int atoi(string s) {
+    var len = length_of_string(s);
+    var digits = array_of_string(s);
+
+    /* Check if number is negative */
+    var negative = (digits[0] == 45);
+
+    var out = 0;
+
+    /* If number is negative, start looking at digits 1 position later */
+    var i = 0;
+    if (negative) { i = 1; }
+
+    /* Iterate over digits, multiplying accumulator 10 and adding digit each time */
+    for (; i < len; i = i + 1;) {
+        out = out * 10 + digits[i] - 48;
+    }
+
+    if (negative) { out = -out; }
+    return out;
+}
+
+/* Sum of all amicable numbers below limit */
+global amicable_count = 0;
+
+/* Iterate over integer to look for amicable numbers */
+void main_loop(Number[] a, int limit) {
+    /* Iterate from 2 to limit */
+    for (var i = 2; i < limit; i = i + 1;) {
+        /* Add i as a factor to all its multiples */
+        for (var j = i * 2; j < limit; j = j + i;) {
+            a[j].add_factor(a[j], i);
+        }
+
+        /* Extract the factor sum from number struct */
+        var s = a[i].factor_sum;
+
+        /* Ignore if factor sum exceeds limit */
+        if (s < limit) {
+            /* If i is lower number in potential pair,
+             * add as potential partner to the other number */
+            if (s > i) {
+                a[s].add_partner(a[s], i);
+            /* Otherwise, if i's linked list contains partner,
+             * amicable pair has been found */
+            } else if (a[i].has_partner(a[i], s)) {
+                amicable_count = amicable_count + s + i;
+            }
+        }
+    }
+    return;
+}
+
+/* Main method
+ * Expects one command line argument of upper limit for search */
+int program (int argc, string[] argv) {
+    if (argc != 2) {
+        print_string("-1.");
+        return 0;
+    }
+
+    var limit = atoi(argv[1]);
+    if (limit < 2) { 
+        print_string("-1.");
+        return 0;
+    }
+
+    /* Populate array with empty number structs */
+    var a = new Number[limit]{
+        i -> new Number{
+            factor_sum=1; 
+            head=ListNode null;
+            add_factor=add_factor;
+            has_partner=has_partner;
+            add_partner=add_partner}
+    };
+
+    main_loop(a, limit);
+
+    print_int(amicable_count);
+    print_string(".");
+
+    return 0;
+}

@@ -1,0 +1,139 @@
+/* Jose Amezquita and Robert Schabacker
+I pledge my honor that I have abided by the Stevens Honor System. */
+
+struct Node{
+    string label;
+    int val;
+    Node? left;
+    Node? right;
+    bool hasLeft;
+    bool hasRight
+}
+
+Node newNode(string lbl, int v) {
+    return new Node {label=lbl; val=v; left=Node null; right=Node null; hasLeft=false; hasRight=false};
+}
+
+Node addnewNode(string lbl, int v, Node root){
+    var current = root;
+    while ((v < current.val & current.hasLeft) | (v > current.val & current.hasRight)){
+        if (v < current.val & current.hasLeft){
+            if? (Node temp = current.left){
+                current = temp;
+            }
+        }else {
+            if? (Node temp = current.right){
+                current = temp;
+            }
+        }
+    }
+    if (v < current.val) {
+        current.hasLeft=true;
+        current.left = newNode(lbl, v);
+    }else {
+        current.hasRight=true;
+        current.right = newNode(lbl, v);
+    }
+
+    return root;
+}
+
+Node setLeft(Node left, Node root) {
+    root.left = left;
+    root.hasLeft = true;
+    return root;
+}
+
+Node setRight(Node right, Node root) {
+    root.right = right;
+    root.hasRight = true;
+    return root;
+}
+
+void printTree(Node? root) {
+    if?(Node temp = root) {
+        print_string(temp.label);
+        if (temp.hasLeft){
+            printTree(temp.left);
+        }
+        if (temp.hasRight){
+            printTree(temp.right);
+        }
+    }
+    
+    return;
+}
+
+void decode(Node root, int[] bin, int len) {
+    var i = 0;
+    var current = root;
+    while (i < len){
+        if (bin[i] == 0) {
+            if (current.hasLeft) {
+                if? (Node temp = current.left){
+                    current = temp;
+                }
+            }else{
+                print_string(current.label);
+                if? (Node temp = root.left){
+                    current = temp;
+                }
+            }
+        }
+        if (bin[i] == 1) {
+            if (current.hasRight){
+                if? (Node temp = current.right){
+                    current = temp;
+                }
+            }else{
+                print_string(current.label);
+                if? (Node temp = root.right){
+                    current = temp;
+                }
+            }
+        }
+        i = i + 1;
+    }
+    print_string(current.label);
+    return;
+}
+
+
+
+int program (int argc, string[] argv) {
+    var root = newNode("-", 100);
+    var left1 = newNode("-", 47);
+    var right1 = newNode("-", 53);
+    var nodeA = newNode("A", 25);
+    var left2 = newNode("-", 22);
+    var nodeF = newNode("F", 10);
+    var nodeB = newNode("B", 12);
+    var nodeE = newNode("E", 25);
+    var nodeD = newNode("D", 28);
+
+    left2 = setLeft(nodeF, left2);
+    left2 = setRight(nodeB, left2);
+    left1 = setLeft(left2, left1);
+    left1 = setRight(nodeA, left1);
+    right1 = setLeft(nodeE, right1);
+    right1 = setRight(nodeD, right1);
+
+    root = setLeft(left1, root);
+    root = setRight(right1, root);
+
+    var root2 = newNode("BST", 100);
+    root2 = addnewNode("2", 99, root2);
+    root2 = addnewNode("3", 101, root2);
+
+    printTree(root2);
+
+    print_string("\n");
+
+    var bin = new int[]{1,1,1,0,0,1,1,1,0,0,1,1,0,1,0,0,0,0};
+
+    decode(root, bin, 18);
+
+    return 0;
+}
+
+

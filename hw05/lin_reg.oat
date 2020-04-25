@@ -1,0 +1,42 @@
+struct CountHelper{
+    int count
+}
+
+struct Counter{
+    CountHelper count_helper;
+    (CountHelper) -> void inc
+}
+
+void increment_count(CountHelper x){
+     x.count = x.count + 1;
+     return;
+}
+
+int lin_reg(int[] data, int epochs){
+    var weight = 0;
+    var prediction = 0;
+    var error = 0;
+    for (var i = 0; i < epochs; i = i + 1;) {
+        for(var j = 0; j < length(data); j = j + 1;){
+               prediction = weight * data[j];
+               error = prediction - data[j];
+               weight = weight - error;}
+    }
+    return weight;
+}
+
+
+int program(int argc, string[] argv){
+    var y = new CountHelper { count = 0 };
+    var x = new Counter { count_helper = y; inc = increment_count };
+    x.inc(x.count_helper);
+    var test = x.count_helper.count;
+    print_int(test);
+    var data = new int[5];
+    for (var i=0; i<length(data); i = i+1;) {
+      data[i] = i;
+    }
+    var weight = lin_reg(data,5);
+    print_int(weight*10);
+    return 0;
+}

@@ -1,0 +1,73 @@
+struct Node {
+	int val;
+	Node? next;
+	Node? prev
+}
+
+struct LL {
+  Node? first
+}
+
+void addNode(LL lst, Node? n) {
+	if?(Node curr = lst.first) {
+		while (true) { 
+			if?(Node b = curr.next) {
+				curr = b;
+			}
+			else {
+				curr.next = n;
+				return;
+			}
+		}
+	}
+	return;
+}
+
+void addValue(LL lst, int num) {
+	if?(Node curr = lst.first) {
+		while (true) { 
+			if?(Node b = curr.next) {
+				curr = b;
+			}
+			else {
+				curr.next = new Node{val = num; next = Node null; prev = curr};
+				return;
+			}
+		}
+	}
+	return;
+}
+
+void reverse(LL lst) {
+	if?(Node curr = lst.first) {
+		while (true) { 
+			if?(Node check = curr.next) {
+				var change = check;
+				var temp = curr.prev;
+				curr.prev = check;
+				curr.next = temp;
+				curr = change;
+			}
+			else {
+				lst.first = curr;
+				return;
+			}
+		}
+	}
+	return;
+}
+
+int program(int argc, string[] argv) {
+	var list = new LL { first = new Node {val = 8; next = Node null; prev = Node null}};
+	addValue(list, 1);
+	reverse(list);
+	addValue(list, 5);
+	reverse(list);
+	reverse(list);
+	if?(Node safe = list.first){
+		return safe.val;
+	}
+	else {
+		return 1;
+	}
+}

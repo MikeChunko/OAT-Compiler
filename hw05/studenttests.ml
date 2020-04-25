@@ -4,6 +4,8 @@ open X86
 open Driver
 open Ll
 open Backend
+open Range
+open Typechecker
 
 (* These tests are provided by you -- they will be graded manually *)
 
@@ -314,6 +316,124 @@ let my_tests1 = [
   )
 ]
 
+let rpm_tests = [
+  (
+    "hw5programs/russian_peasant.oat",
+    "",
+    "245"
+  )
+]
+
+
+let unit_tests4 = [
+  "correct_subtype",
+    (fun () ->
+              if Typechecker.subtype Tctxt.empty (TRef(RArray(TInt))) (TRef(RArray(TInt))) then ()
+              else failwith "This should not have failed based on the subtyping rules");
+    "incorrect_subtype",
+      (fun () ->
+              if Typechecker.subtype Tctxt.empty (TRef(RString)) (TRef(RArray(TBool))) then failwith "This should definitely not work"
+              else ())
+]
+
+let typ_assn_context1 = Tctxt.add_global Tctxt.empty "x" @@ TRef(RFun([], RetVoid))
+let typ_assn_context2 = Tctxt.add_local typ_assn_context1 "x" TInt
+
+let unit_tests5 = [
+]
+
+let tc_tests1 =
+  let open Typechecker in
+  let open Tctxt in
+  let open Gradedtests in
+  let open Ast in
+  Test ("simple tc (student)", [
+    "simple_correct", typecheck_correct (fun () ->
+      let e = no_loc @@ Length (no_loc @@ Id "x") in
+      let tc = add_local empty "x" (TRef (RArray TBool)) in
+      ignore (typecheck_exp tc e)
+    );
+    "simple_failure", typecheck_error (fun () ->
+      let e = no_loc @@ Length (no_loc @@ Id "x") in
+      let tc = add_local empty "x" (TRef RString) in
+      ignore (typecheck_exp tc e)
+    );
+  ])
+
+let make_file_test (name:string) (tests:(string*string) list) :assertion test =
+  let config = List.map (fun (file, ret) ->
+    ("myprograms/" ^ file, "", ret)
+  ) tests in
+  Test (name ^ " (student)", Gradedtests.executed_oat_file config)
+
+let my_tests6 = [
+  ("inorder.oat", "", "-3 -2 -1 0 1 2 3 0")
+]
+
+let unit_tests6 = [
+  "subtype_fun_null",
+   (fun () ->
+       if Typechecker.subtype Tctxt.empty (TRef(RFun([TInt; TNullRef(RString)],RetVoid))) (TRef(RFun([TInt; TNullRef(RString)], RetVoid))) then ()
+       else failwith "should not fail")                                                                                     
+; ("no_subtype_fun_null",
+   (fun () ->
+       if Typechecker.subtype Tctxt.empty (TRef(RFun([TInt; TRef(RString)],RetVoid))) (TRef(RFun([TInt; TNullRef(RString)], RetVoid))) then
+         failwith "should not succeed" else ())
+  )
+]
+
+let type_tests7 = [
+  "subtype_int->int_int->int",
+   (fun () ->
+       if Typechecker.subtype Tctxt.empty (TNullRef (RFun ([TInt], RetVal TInt))) (TNullRef (RFun ([TInt], RetVal TInt))) then ()
+       else failwith "should not fail")                                                                                     
+; ("no_subtype_int->int",
+   (fun () ->
+       if Typechecker.subtype Tctxt.empty (TNullRef (RFun ([TInt], RetVal TBool))) (TNullRef (RFun ([TInt], RetVal TInt))) then
+         failwith "should not succeed" else ())
+  )
+]
+
+let convert (x,y : int * int) =
+  "amicable_numbers.oat",
+  string_of_int x, (string_of_int y)^".0"
+
+(* Each list element is a pair of the correct number of inversions, and the list of integers *)
+let amicable_numbers_tests =
+  List.map convert
+  [   -25, -1
+  ;    -1, -1
+  ;     0, -1
+  ;     1, -1
+  ;     2, 0
+  ;     5, 0
+  ;   300, 504
+  ;  1122, 504
+  ;  1563, 2898
+  ;  5000, 8442
+  ;  6368, 19026
+  ;  6369, 31626
+  ;  7000, 31626
+  ; 29286, 115818 
+  ]
+
+let unit_tests8 = Typechecker.[
+  "subtype_fun_args_fail",
+  (fun () ->
+    if subtype Tctxt.empty (TRef (RFun ([TRef RString], RetVoid)))
+      (TRef (RFun ([TNullRef RString], RetVoid)))
+    then failwith "Should fail"
+    else ()
+  );
+  "subtype_fun_args",
+  (fun () ->
+    if subtype Tctxt.empty (TRef (RFun ([TNullRef RString], RetVoid)))
+      (TRef (RFun ([TRef RString], RetVoid)))
+    then ()
+    else failwith "Should not fail")
+    
+]
+
 let provided_tests : suite = [
   GradedTest("custom unit tests", 1, unit_tests);
   GradedTest("tetrate tests", 0, executed_oat_file tetrate_tests);
@@ -344,4 +464,30 @@ let provided_tests : suite = [
 0 0 0 0 0 0 0 0 0 0 0
 0 0 0 0 0 0 0 0 0 0 0 0")]);
   GradedTest("my_unit_test1", 0, my_tests1);
+  GradedTest("rpm_tests", 2, executed_oat_file rpm_tests);
+  GradedTest("unit_tests", 2, unit_tests4);
+  Test("tc TYP_ASSN rule unit tests:",
+       [
+         "works on valid LHS", Gradedtests.typecheck_correct
+           (fun () -> ignore @@ Typechecker.typecheck_stmt typ_assn_context2
+               (no_loc @@ Assn(no_loc @@ Ast.Id "x", no_loc @@ CInt 5L)) RetVoid);
+         "fails on invalid LHS", Gradedtests.typecheck_error
+           (fun () -> ignore @@ Typechecker.typecheck_stmt typ_assn_context1
+               (no_loc @@ Assn(no_loc @@ Ast.Id "x", no_loc @@ CInt 5L)) RetVoid)
+       ]);
+  Test("path sum test", Gradedtests.executed_oat_file
+         [("hw5programs/path_sum.oat", "", "The shortest path was: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 9, 18, 27, 36, 45, 54, 63, 72, 81] with sum 4050") ]);
+  Test("maximum of three numbers test", Gradedtests.executed ["maxthree.oat", 26L]);
+  GradedTest("lin_reg", 1, executed_oat_file ["lin_reg.oat","","1100"]);
+  GradedTest("unit_tests",1,unit_tests5);
+  tc_tests1;
+  make_file_test "big test" [
+    "linkedlist.oat", "5";
+  ];
+  GradedTest("Unit tests", 0, unit_tests6);
+  GradedTest("Student Tests", 0, executed_oat_file my_tests6);
+  GradedTest("Subtype Tests", 0, type_tests7);
+  GradedTest("Huffman", 0, executed_oat_file [("huffman.oat", "", "BST23\nDEADBEEF0")]);
+  Test("jp-oz amicable numbers", Gradedtests.executed_oat_file amicable_numbers_tests);
+  Test("jp-oz inference type tests", unit_tests8);
 ]

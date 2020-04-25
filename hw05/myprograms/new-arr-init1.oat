@@ -1,0 +1,9 @@
+int program(int argc, string[] argv) {
+  var arr = new bool[3]{i -> true};
+  for (var i = 0; i < length(arr); i = i + 1;) {
+    if (!arr[i]) {
+      return 1;
+    }
+  }
+  return 0;
+}

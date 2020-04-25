@@ -1,0 +1,7 @@
+int program(int argc, string[] argv) {
+  var x = int[] null;
+  if? (int[] y = x) {
+    return 1;
+  }
+  return 0;
+}

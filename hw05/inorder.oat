@@ -1,0 +1,65 @@
+struct BstNode {
+    int data;
+    BstNode? left;
+    BstNode? right
+}
+
+BstNode? add(BstNode? curr, int addVal){
+    if?(BstNode val = curr) {
+        if(val.data > addVal){
+            val.left = add(val.left, addVal);
+        }
+        else{
+            val.right = add(val.right, addVal);
+        }
+    }
+    else{
+        return new BstNode {data = addVal; left = BstNode null; right = BstNode null};
+    }
+
+    return curr;
+}
+
+void inOrder(BstNode? currNull){
+    if?(BstNode curr = currNull)
+    {
+        inOrder(curr.left);
+        print_int(curr.data);
+        print_string(" ");
+        inOrder(curr.right);
+    }
+
+    return;
+}
+
+int program(int argc, string[] argv){
+    var root = new BstNode{data = 0; left = BstNode null; right = BstNode null};
+    if?(BstNode updated = add(root, 1))
+    {
+        root = updated;
+    }
+    if?(BstNode updated = add(root, 2))
+    {
+        root = updated;
+    }
+    if?(BstNode updated = add(root, 3))
+    {
+        root = updated;
+    }
+    if?(BstNode updated = add(root, -1))
+    {
+        root = updated;
+    }
+    if?(BstNode updated = add(root, -2))
+    {
+        root = updated;
+    }
+    if?(BstNode updated = add(root, -3))
+    {
+        root = updated;
+    }
+
+    inOrder(root);
+
+    return 0;
+}

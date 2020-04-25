@@ -1,0 +1,9 @@
+int program(int argc, string[] argv) {
+  var x = int[] null;
+  x = new int[3];
+  if? (int[] y = x) {
+    y[0] = 1;
+    return y[0];
+  }
+  return 0;
+}

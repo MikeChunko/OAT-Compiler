@@ -1,4 +1,6 @@
-(** Alias Analysis *)
+(* Author: Michael Chunko                                                     *)
+(* Pledge: I pledge my honor that I have abided by the Stevens Honor System.  *)
+(* Alias Analysis *)
 
 open Ll
 open Datastructures
@@ -24,7 +26,7 @@ module SymPtr =
 type fact = SymPtr.t UidM.t
 
 (* flow function across Ll instructions ------------------------------------- *)
-(* TASK: complete the flow function for alias analysis. 
+(* TASK: complete the flow function for alias analysis.
 
    - After an alloca, the defined UID is the unique name for a stack slot
    - A pointer returned by a load, call, bitcast, or GEP may be aliased
@@ -33,9 +35,24 @@ type fact = SymPtr.t UidM.t
    - Other instructions do not define pointers
 
  *)
+ (* TODO *)
 let insn_flow ((u,i):uid * insn) (d:fact) : fact =
-  failwith "Alias.insn_flow unimplemented"
-
+  let rec call_add_args (args:(ty * operand) list) (d:fact) : fact =
+    match args with
+    | []          -> d
+    | (ty,op)::tl -> (match ty,op with
+      | Ptr _, Id u -> UidM.add u SymPtr.MayAlias d
+      | _           -> call_add_args tl d) in
+  match i with
+  | Alloca _ -> UidM.add u SymPtr.Unique d
+  | Load (Ptr (Ptr _), _) -> UidM.add u SymPtr.MayAlias d
+  | Call (Ptr _, _, args) -> UidM.add u SymPtr.MayAlias (call_add_args args d)
+  | Bitcast (Ptr _, u', _)
+  | Gep (_, u', _)        -> (match u' with
+    | Ll.Id u' -> UidM.add u' SymPtr.MayAlias (UidM.add u SymPtr.MayAlias d)
+    | _        -> UidM.add u SymPtr.MayAlias d)
+  | Store (Ptr _,Id u',_) -> UidM.add u' SymPtr.MayAlias d
+  | _                     -> UidM.add u SymPtr.UndefAlias d
 
 (* The flow function across terminators is trivial: they never change alias info *)
 let terminator_flow t (d:fact) : fact = d
@@ -48,13 +65,13 @@ module Fact =
 
     let insn_flow = insn_flow
     let terminator_flow = terminator_flow
-    
+
     (* UndefAlias is logically the same as not having a mapping in the fact. To
        compare dataflow facts, we first remove all of these *)
-    let normalize : fact -> fact = 
+    let normalize : fact -> fact =
       UidM.filter (fun _ v -> v != SymPtr.UndefAlias)
 
-    let compare (d:fact) (e:fact) : int = 
+    let compare (d:fact) (e:fact) : int =
       UidM.compare SymPtr.compare (normalize d) (normalize e)
 
     let to_string : fact -> string =
@@ -68,8 +85,22 @@ module Fact =
        It may be useful to define a helper function that knows how to take the
        meet of two SymPtr.t facts.
     *)
-    let combine (ds:fact list) : fact =
-      failwith "Alias.Fact.combine not implemented"
+    (* TODO *)
+    let rec combine (ds:fact list) : fact =
+      let fact_merge (key:Datastructures.UidM.key) (m1:'a option) (m2:'b option) : 'c option =
+        match m1 with
+          | None     -> m2
+          | Some lvl -> (match lvl with
+          | SymPtr.Unique     -> m1
+          | SymPtr.MayAlias
+          | SymPtr.UndefAlias -> (match m2 with
+            | Some SymPtr.Unique
+            | Some SymPtr.MayAlias -> m2
+            | _                    -> m1)) in
+      match ds with
+      | []    -> UidM.empty
+      | [h]   -> h
+      | h::tl -> UidM.merge fact_merge h (combine tl)
   end
 
 (* instantiate the general framework ---------------------------------------- *)
@@ -78,19 +109,18 @@ module Solver = Solver.Make (Fact) (Graph)
 
 (* expose a top-level analysis operation ------------------------------------ *)
 let analyze (g:Cfg.t) : Graph.t =
-  (* the analysis starts with every node set to bottom (the map of every uid 
+  (* the analysis starts with every node set to bottom (the map of every uid
      in the function to UndefAlias *)
   let init l = UidM.empty in
 
-  (* the flow into the entry node should indicate that any pointer parameter 
+  (* the flow into the entry node should indicate that any pointer parameter
      to the function may be aliased *)
-  let alias_in = 
-    List.fold_right 
+  let alias_in =
+    List.fold_right
       (fun (u,t) -> match t with
                     | Ptr _ -> UidM.add u SymPtr.MayAlias
-                    | _ -> fun m -> m) 
-      g.Cfg.args UidM.empty 
+                    | _ -> fun m -> m)
+      g.Cfg.args UidM.empty
   in
   let fg = Graph.of_cfg init alias_in g in
   Solver.solve fg
-

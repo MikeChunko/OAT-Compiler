@@ -1,7 +1,6 @@
 (* Author: Michael Chunko                                                     *)
 (* Pledge: I pledge my honor that I have abided by the Stevens Honor System.  *)
 (* Alias Analysis *)
-
 open Ll
 open Datastructures
 
@@ -15,8 +14,8 @@ module SymPtr =
     let compare : t -> t -> int = Pervasives.compare
 
     let to_string = function
-      | MayAlias -> "MayAlias"
-      | Unique -> "Unique"
+      | MayAlias   -> "MayAlias"
+      | Unique     -> "Unique"
       | UndefAlias -> "UndefAlias"
 
   end
@@ -33,9 +32,7 @@ type fact = SymPtr.t UidM.t
    - A pointer passed as an argument to a call, bitcast, GEP, or store
      (as the value being stored) may be aliased
    - Other instructions do not define pointers
-
  *)
- (* TODO *)
 let insn_flow ((u,i):uid * insn) (d:fact) : fact =
   let rec call_add_args (args:(ty * operand) list) (d:fact) : fact =
     match args with
@@ -85,7 +82,6 @@ module Fact =
        It may be useful to define a helper function that knows how to take the
        meet of two SymPtr.t facts.
     *)
-    (* TODO *)
     let rec combine (ds:fact list) : fact =
       let fact_merge (key:Datastructures.UidM.key) (m1:'a option) (m2:'b option) : 'c option =
         match m1 with
@@ -120,7 +116,6 @@ let analyze (g:Cfg.t) : Graph.t =
       (fun (u,t) -> match t with
                     | Ptr _ -> UidM.add u SymPtr.MayAlias
                     | _ -> fun m -> m)
-      g.Cfg.args UidM.empty
-  in
+      g.Cfg.args UidM.empty in
   let fg = Graph.of_cfg init alias_in g in
   Solver.solve fg

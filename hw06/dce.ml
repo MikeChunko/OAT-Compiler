@@ -25,7 +25,7 @@ open Datastructures
 let dce_block (lb:uid -> Liveness.Fact.t) (ab:uid -> Alias.fact) (b:Ll.block) : Ll.block =
   let rec dce_helper (b_old:Ll.block) (b_new:Ll.block) : Ll.block =
     match b_old.insns with
-    | [] -> {b_new with insns = List.rev b_new.insns} (*{insns = List.rev b_new.insns; term = b_new.term}*)
+    | [] -> {b_new with insns = List.rev b_new.insns}
     | (u,i)::tl -> (match i with
       | Call _        -> dce_helper {b_old with insns = tl} {b_new with insns = (u,i)::b_new.insns}
       | Store(_,_,Id u') ->
@@ -36,7 +36,7 @@ let dce_block (lb:uid -> Liveness.Fact.t) (ab:uid -> Alias.fact) (b:Ll.block) : 
         if Datastructures.UidS.mem u (lb u)
         then dce_helper {b_old with insns = tl} {b_new with insns = (u,i)::b_new.insns}
         else dce_helper {b_old with insns = tl} b_new) in
-  dce_helper b {insns = []; term = b.term}
+  dce_helper b {b with insns = []}
 
 let run (lg:Liveness.Graph.t) (ag:Alias.Graph.t) (cfg:Cfg.t) : Cfg.t =
 

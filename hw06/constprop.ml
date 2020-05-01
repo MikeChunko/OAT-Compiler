@@ -82,7 +82,7 @@ let insn_flow (u,i:uid * insn) (d:fact) : fact =
   match i with
   | Binop(op,_,u1,u2) -> UidM.add u (cmp_bop op u1 u2) d
   | Icmp(op,_,u1,u2)  -> UidM.add u (cmp_icmp op u1 u2) d
-  | Store _           -> d (* Dunno why it has to be like this *)
+  | Store _           -> UidM.add u SymConst.UndefConst d
   | _                 -> UidM.add u SymConst.NonConst d
 
 (* The flow function across terminators is trivial: they never change const info *)
@@ -139,15 +139,37 @@ let analyze (g:Cfg.t) : Graph.t =
   Solver.solve fg
 
 (* run constant propagation on a cfg given analysis results ----------------- *)
-(* HINT: your cp_block implementation will probably rely on several helper
-   functions.                                                                 *)
 let run (cg:Graph.t) (cfg:Cfg.t) : Cfg.t =
   let open SymConst in
 
   let cp_block (l:Ll.lbl) (cfg:Cfg.t) : Cfg.t =
     let b = Cfg.block cfg l in
     let cb = Graph.uid_out cg l in
-    failwith "Constprop.cp_block unimplemented"
+    let cmp_op (u:uid) (op:operand) : operand =
+      match op with
+      | Id u' -> (match Datastructures.UidM.find u' (cb u) with
+        | SymConst.Const c -> Const c
+        | _                -> op)
+      | _    -> op in
+    let cmp_term ((u,t):uid * terminator) : Ll.uid * Ll.terminator =
+      match t with
+      | Ret (ty, Some op)  -> u, Ret (ty, Some (cmp_op u op))
+      | Cbr (op,lbl1,lbl2) -> u, Cbr (cmp_op u op, lbl1, lbl2)
+      | _                  -> u, t in
+    let rec cp_helper (b_old:Ll.block) (b_new:Ll.block) : Ll.block =
+      match b_old.insns with
+      | []        -> {b_new with insns = List.rev b_new.insns}
+      | (u,i)::tl ->
+        let newinsn = u, (match i with
+          | Binop(bop,ty,op1,op2) -> Binop(bop,ty,cmp_op u op1,cmp_op u op2)
+          | Store(ty,op1,op2)     -> Store(ty,cmp_op u op1,op2)
+          | Icmp(cnd,ty,op1,op2)  -> Icmp(cnd,ty,cmp_op u op1,cmp_op u op2)
+          | Call(ty,op,oplst)     -> Call(ty,op,List.map (fun (ty,op) -> ty,cmp_op u op) oplst)
+          | Bitcast(ty1,op,ty2)   -> Bitcast(ty1,cmp_op u op,ty2)
+          | Gep(ty,op,oplst)      -> Gep(ty,op,List.map (fun op -> cmp_op u op) oplst)
+          | _                     -> i) in
+        cp_helper {b_old with insns = tl} {b_new with insns = newinsn::b_new.insns} in
+    {cfg with  blocks = Datastructures.LblM.add l (cp_helper b {insns = []; term = cmp_term b.term}) cfg.blocks}
   in
 
   LblS.fold cp_block (Cfg.nodes cfg) cfg

@@ -1,3 +1,5 @@
+(* Author: Michael Chunko                                                     *)
+(* Pledge: I pledge my honor that I have abided by the Stevens Honor System.  *)
 open Ll
 open Datastructures
 
@@ -20,14 +22,19 @@ module SymConst =
       | Const i -> Printf.sprintf "Const (%LdL)" i
       | UndefConst -> "UndefConst"
 
-    
   end
 
-(* The analysis computes, at each program point, which UIDs in scope will evaluate 
+(* The analysis computes, at each program point, which UIDs in scope will evaluate
    to integer constants *)
 type fact = SymConst.t UidM.t
 
-
+let cmp_op (u:Ll.operand) (d:fact) : SymConst.t =
+   match u with
+  | Id u    -> (match Datastructures.UidM.find_opt u d with
+    | None   -> SymConst.UndefConst
+    | Some s -> s)
+  | Const c -> SymConst.Const c
+  | _       -> failwith "Consprop.cmp_op: Something unexpected happened!"
 
 (* flow function across Ll instructions ------------------------------------- *)
 (* - Uid of a binop or icmp with const arguments is constant-out
@@ -37,7 +44,46 @@ type fact = SymConst.t UidM.t
    - Uid of all other instructions are NonConst-out
  *)
 let insn_flow (u,i:uid * insn) (d:fact) : fact =
-  failwith "Constprop.insn_flow unimplemented"
+  let cmp_bop (op:Ll.bop) (u1:Ll.operand) (u2:Ll.operand) : SymConst.t =
+    let op1, op2 = cmp_op u1 d, cmp_op u2 d in
+    match op1, op2 with
+    | NonConst,_
+    | _,NonConst         -> SymConst.NonConst
+    | UndefConst,_
+    | _,UndefConst       -> SymConst.UndefConst
+    | Const c1, Const c2 -> SymConst.Const (match op with
+      | Add  -> Int64.add c1 c2
+      | Sub  -> Int64.sub c1 c2
+      | Mul  -> Int64.mul c1 c2
+      | Shl  -> Int64.shift_left c1 (Int64.to_int c2)
+      | Lshr -> Int64.shift_right_logical c1 (Int64.to_int c2)
+      | Ashr -> Int64.shift_right c1 (Int64.to_int c2)
+      | And  -> Int64.logand c1 c2
+      | Or   -> Int64.logor c1 c2
+      | Xor  -> Int64.logxor c1 c2) in
+  let cmp_icmp (op:Ll.cnd) (u1:Ll.operand) (u2:Ll.operand) : SymConst.t =
+    let of_bool (b:bool) : int64 =
+      if b
+      then 1L
+      else 0L in
+    let op1, op2 = cmp_op u1 d, cmp_op u2 d in
+    match op1, op2 with
+    | NonConst,_
+    | _,NonConst         -> SymConst.NonConst
+    | UndefConst,_
+    | _,UndefConst       -> SymConst.UndefConst
+    | Const c1, Const c2 -> SymConst.Const (match op with
+      | Eq  -> of_bool (Int64.compare c1 c2 == 0)
+      | Ne  -> of_bool (Int64.compare c1 c2 <> 0)
+      | Slt -> of_bool (Int64.compare c1 c2 <  0)
+      | Sle -> of_bool (Int64.compare c1 c2 <= 0)
+      | Sgt -> of_bool (Int64.compare c1 c2 >  0)
+      | Sge -> of_bool (Int64.compare c1 c2 >= 0)) in
+  match i with
+  | Binop(op,_,u1,u2) -> UidM.add u (cmp_bop op u1 u2) d
+  | Icmp(op,_,u1,u2)  -> UidM.add u (cmp_icmp op u1 u2) d
+  | Store _           -> d (* Dunno why it has to be like this *)
+  | _                 -> UidM.add u SymConst.NonConst d
 
 (* The flow function across terminators is trivial: they never change const info *)
 let terminator_flow (t:terminator) (d:fact) : fact = d
@@ -50,11 +96,11 @@ module Fact =
 
     let insn_flow = insn_flow
     let terminator_flow = terminator_flow
-    
-    let normalize : fact -> fact = 
+
+    let normalize : fact -> fact =
       UidM.filter (fun _ v -> v != SymConst.UndefConst)
 
-    let compare (d:fact) (e:fact) : int  = 
+    let compare (d:fact) (e:fact) : int  =
       UidM.compare SymConst.compare (normalize d) (normalize e)
 
     let to_string : fact -> string =
@@ -62,8 +108,15 @@ module Fact =
 
     (* The constprop analysis should take the meet over predecessors to compute the
        flow into a node. You may find the UidM.merge function useful *)
-    let combine (ds:fact list) : fact = 
-      failwith "Constprop.Fact.combine unimplemented"
+    let rec combine (ds:fact list) : fact =
+      let fact_merge (key:Datastructures.UidM.key) (m1:'a option) (m2:'b option) : 'c option =
+        match m2 with
+          | None   -> m1
+          | Some _ -> m2 in
+      match ds with
+      | []    -> UidM.empty
+      | [h]   -> h
+      | h::tl -> UidM.merge fact_merge h (combine tl)
   end
 
 (* instantiate the general framework ---------------------------------------- *)
@@ -72,26 +125,24 @@ module Solver = Solver.Make (Fact) (Graph)
 
 (* expose a top-level analysis operation ------------------------------------ *)
 let analyze (g:Cfg.t) : Graph.t =
-  (* the analysis starts with every node set to bottom (the map of every uid 
+  (* the analysis starts with every node set to bottom (the map of every uid
      in the function to UndefConst *)
   let init l = UidM.empty in
 
   (* the flow into the entry node should indicate that any parameter to the
      function is not a constant *)
-  let cp_in = List.fold_right 
+  let cp_in = List.fold_right
     (fun (u,_) -> UidM.add u SymConst.NonConst)
-    g.Cfg.args UidM.empty 
+    g.Cfg.args UidM.empty
   in
   let fg = Graph.of_cfg init cp_in g in
   Solver.solve fg
 
-
 (* run constant propagation on a cfg given analysis results ----------------- *)
-(* HINT: your cp_block implementation will probably rely on several helper 
+(* HINT: your cp_block implementation will probably rely on several helper
    functions.                                                                 *)
 let run (cg:Graph.t) (cfg:Cfg.t) : Cfg.t =
   let open SymConst in
-  
 
   let cp_block (l:Ll.lbl) (cfg:Cfg.t) : Cfg.t =
     let b = Cfg.block cfg l in

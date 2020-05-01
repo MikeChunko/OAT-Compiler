@@ -29,12 +29,10 @@ let dce_block (lb:uid -> Liveness.Fact.t) (ab:uid -> Alias.fact) (b:Ll.block) : 
     | (u,i)::tl -> (match i with
       | Call _        -> dce_helper {b_old with insns = tl} {b_new with insns = (u,i)::b_new.insns}
       | Store(_,_,Id u') ->
-        let liveness_fact = lb u in
-        let alias_fact    = ab u in
-        if Datastructures.UidS.mem u' (lb u) || Datastructures.UidM.mem (Alias.SymPtr.to_string Alias.SymPtr.MayAlias) alias_fact
+        if Datastructures.UidS.mem u' (lb u) || Datastructures.UidM.mem (Alias.SymPtr.to_string Alias.SymPtr.MayAlias) (ab u)
         then dce_helper {b_old with insns = tl} {b_new with insns = (u,i)::b_new.insns}
         else dce_helper {b_old with insns = tl} b_new
-      | _             -> 
+      | _             ->
         if Datastructures.UidS.mem u (lb u)
         then dce_helper {b_old with insns = tl} {b_new with insns = (u,i)::b_new.insns}
         else dce_helper {b_old with insns = tl} b_new) in

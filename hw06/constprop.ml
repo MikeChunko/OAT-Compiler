@@ -34,7 +34,8 @@ let cmp_op (u:Ll.operand) (d:fact) : SymConst.t =
     | None   -> SymConst.UndefConst
     | Some s -> s)
   | Const c -> SymConst.Const c
-  | _       -> failwith "Consprop.cmp_op: Something unexpected happened!"
+  | Gid g   -> failwith ("Constprop.cmp_op " ^ g)
+  | Null    -> SymConst.UndefConst
 
 (* flow function across Ll instructions ------------------------------------- *)
 (* - Uid of a binop or icmp with const arguments is constant-out

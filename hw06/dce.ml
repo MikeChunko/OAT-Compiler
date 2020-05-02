@@ -27,8 +27,8 @@ let dce_block (lb:uid -> Liveness.Fact.t) (ab:uid -> Alias.fact) (b:Ll.block) : 
     match b_old.insns with
     | [] -> {b_new with insns = List.rev b_new.insns}
     | (u,i)::tl -> (match i with
-      | Call _        -> dce_helper {b_old with insns = tl} {b_new with insns = (u,i)::b_new.insns}
-      | Store(_,temp,Id u') ->
+      | Call _            -> dce_helper {b_old with insns = tl} {b_new with insns = (u,i)::b_new.insns}
+      | Store(_,_,Id u')  ->
         let liveness_cond =  Datastructures.UidS.mem u' (lb u) in
         let alias_cond    = match Datastructures.UidM.find_opt u' (ab u) with
           | Some Alias.SymPtr.MayAlias -> true
@@ -36,7 +36,9 @@ let dce_block (lb:uid -> Liveness.Fact.t) (ab:uid -> Alias.fact) (b:Ll.block) : 
         if liveness_cond || alias_cond
         then dce_helper {b_old with insns = tl} {b_new with insns = (u,i)::b_new.insns}
         else dce_helper {b_old with insns = tl} b_new
-      | _             ->
+      | Store(_,_,Gid u') -> (* Hardcode for globals - I don't know a better way to do this *)
+        dce_helper {b_old with insns = tl} {b_new with insns = (u,i)::b_new.insns}
+      | _                 ->
         if Datastructures.UidS.mem u (lb u)
         then dce_helper {b_old with insns = tl} {b_new with insns = (u,i)::b_new.insns}
         else dce_helper {b_old with insns = tl} b_new) in

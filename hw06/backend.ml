@@ -705,7 +705,7 @@ type rig_fact = UidS.t UidM.t
 type coloring = (uid * int) list
 
 let better_layout (f:Ll.fdecl) (live:liveness) : layout =
-  print_string ("IN LAYOUT\n\n");
+  (*print_string ("IN LAYOUT\n\n");*) (*DEBUG*)
   let n_arg = ref 0 in
   let n_spill = ref 0 in
 
@@ -728,14 +728,22 @@ let better_layout (f:Ll.fdecl) (live:liveness) : layout =
 
   let pal_size = LocSet.cardinal pal in
 
+  (* All colors (represented numerically) available for the graph coloring *)
+  let total_colors =
+    let rec construct k =
+      if k == 0
+      then []
+      else k::(construct @@ k - 1) in
+    List.rev @@ construct pal_size in
+
   (* Generates the Register Inteference Graph for a block *)
   let rec gen_rig (block:Ll.block) (live:liveness) (rig:rig_fact) : rig_fact =
     (* Given a set of nodes that are live at the same point,
       for all nodes in the set, adds the full set as edges in the RIG. *)
     let rec add_to_rig (live:UidS.t) (acc:UidS.t) (rig:rig_fact) : rig_fact =
       match UidS.choose_opt live with
-      | None     -> print_string "\n";rig
-      | Some uid -> print_string uid;
+      | None     -> (*print_string "\n";*) rig
+      | Some uid -> (*print_string uid;*)
         let rig' = match UidM.find_opt uid rig with
           | None      -> UidM.add uid (UidS.remove uid acc) rig
           | Some uids -> UidM.add uid (UidS.remove uid @@ UidS.union uids acc) rig in
@@ -761,8 +769,8 @@ let better_layout (f:Ll.fdecl) (live:liveness) : layout =
     | None           -> print_string "END OF RIG\n\n" in
 
   let rig = gen_rig (fst f.f_cfg) live UidM.empty in
-  print_string "\n";
-  print_rig rig;
+  (*print_string "\n";
+  print_rig rig;*) (* DEBUG *)
 
   (* Rudimentarily create a k-coloring for every node in RIG.
      If a k-coloring cannot be done, spill the extra nodes using a heuristic.
@@ -780,31 +788,59 @@ let better_layout (f:Ll.fdecl) (live:liveness) : layout =
       | []        -> print_string "END OF CARDINALITY\n"
       | (u,i)::tl -> print_string (u ^ "; " ^ (string_of_int i) ^ "\n"); print_cardinality tl in
 
-    (* Remove all instances of u in the RIG.
-       Remove its mapping and it from the UidS of all other nodes *)
-    let remove_node (u:uid) (rig:rig_fact) : rig_fact =
-      let rec remove_from_sets (u:uid) (rig:rig_fact) (acc:rig_fact) : rig_fact = 
-        match UidM.choose_opt rig with
-        | None -> acc
-        | Some (k, uids) -> 
-          let acc' = UidM.add k (UidS.remove u uids) acc in
-          remove_from_sets u (UidM.remove k rig) acc' in 
-      remove_from_sets u (UidM.remove u rig) (UidM.remove u rig) in
-    
+    (*print_cardinality @@ cardinality rig;*)
+
     (* Pick a node to pull frm the rig.
        Whichever node has the highest cardinalit will be picked*)
     let pick_node (rig:rig_fact) : uid =
       let rec pick_node_helper (cardinality:(uid * int) list) (acc:uid * int) : uid =
         match cardinality with
         | []        -> fst acc
-        | (u,i)::tl -> 
+        | (u,i)::tl ->
           if i > snd acc
           then pick_node_helper tl (u,i)
           else pick_node_helper tl acc in
-      pick_node_helper (cardinality rig) ("None", -1) in 
+      pick_node_helper (cardinality rig) ("None", -1) in
 
-    print_cardinality @@ cardinality rig; 
-    coloring in
+    (* Remove all instances of u in the RIG.
+       Remove its mapping and it from the UidS of all other nodes *)
+    let remove_node (u:uid) (rig:rig_fact) : rig_fact =
+      (*let rec remove_from_sets (u:uid) (rig:rig_fact) (acc:rig_fact) : rig_fact =
+        match UidM.choose_opt rig with
+        | None -> acc
+        | Some (k, uids) ->
+          let acc' = UidM.add k (UidS.remove u uids) acc in
+          remove_from_sets u (UidM.remove k rig) acc' in
+
+      remove_from_sets u (UidM.remove u rig) (UidM.remove u rig)*)
+      UidM.remove u rig in
+
+    (* Choose the first available color for a node *)
+    let choose_color (u:uid) (rig:rig_fact) (coloring:coloring) (colors:int list): int =
+      let rec choose_color_helper (uids:UidS.t) (coloring:coloring) (colors:int list) : int =
+        match UidS.choose_opt uids with
+        | None ->
+          if colors == []
+          then pal_size + num_spill
+          else List.hd colors
+        | Some u ->
+          let colors' = match List.assoc_opt u coloring with
+            | None -> colors
+            | Some c -> List.filter (fun x -> x <> c) colors in
+          choose_color_helper (UidS.remove u uids) coloring colors' in
+      choose_color_helper (UidM.find u rig) coloring colors in
+
+    let u = pick_node rig in
+
+    if String.equal u "None"
+    then coloring
+    else (
+      let rig' = remove_node u rig in
+      let c = choose_color u rig coloring total_colors in
+      let coloring' = (u,c)::coloring in
+      if rig' <> UidM.empty
+      then gen_coloring rig' coloring' k (if c > pal_size then num_spill + 1 else num_spill)
+      else coloring') in
 
   (* Debug method *)
   let rec print_coloring (coloring:coloring) : unit =
@@ -813,8 +849,8 @@ let better_layout (f:Ll.fdecl) (live:liveness) : layout =
     | (u,c)::tl -> print_string (u ^ ": " ^ (string_of_int c) ^ "\n"); print_coloring tl in
 
   let coloring = gen_coloring rig [] pal_size 0 in
-  print_string "\n";
-  print_coloring coloring;
+  (*print_string "\n";
+  print_coloring coloring; *)(*DEBUG*)
 
   (* Allocates a uid greedily based on liveness information *)
   (* TODO: Change this function to use non-coalescing graph coloring w/ heuristics *)

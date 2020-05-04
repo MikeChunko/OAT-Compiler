@@ -738,7 +738,7 @@ let better_layout (f:Ll.fdecl) (live:liveness) : layout =
     List.rev @@ construct pal_size in
 
   (* Generates the Register Inteference Graph for a block *)
-  let rec gen_rig (block:Ll.block) (live:liveness) (rig:rig_fact) : rig_fact =
+  let rec gen_rig_block (block:Ll.block) (live:liveness) (rig:rig_fact) : rig_fact =
     (* Given a set of nodes that are live at the same point,
       for all nodes in the set, adds the full set as edges in the RIG. *)
     let rec add_to_rig (live:UidS.t) (acc:UidS.t) (rig:rig_fact) : rig_fact =
@@ -753,8 +753,12 @@ let better_layout (f:Ll.fdecl) (live:liveness) : layout =
     | (u,i)::tl ->
       let liveness_info = live.live_out u in
       let rig' = add_to_rig liveness_info liveness_info rig in
-      gen_rig {block with insns = tl} live rig'
-    | []        -> rig in
+      gen_rig_block {block with insns = tl} live rig'
+    | []        -> rig
+
+  and gen_rig_cfg (cfg:Ll.cfg) (live:liveness) : rig_fact =
+    let rig = gen_rig_block (fst cfg) live UidM.empty in
+    List.fold_left (fun rig (_,block) -> gen_rig_block block live rig) rig (snd cfg) in
 
   (* Debug method *)
   let rec print_rig (rig:rig_fact) : unit =
@@ -766,7 +770,7 @@ let better_layout (f:Ll.fdecl) (live:liveness) : layout =
     | None          -> print_string "END OF RIG\n\n"
     | Some (k,uids) -> print_string (k ^ ": " ^ (string_of_uids uids) ^ "\n"); print_rig (UidM.remove k rig) in
 
-  let rig = gen_rig (fst f.f_cfg) live UidM.empty in
+  let rig = gen_rig_cfg f.f_cfg live in
   (*print_string "\n";
   print_rig rig;*) (* DEBUG *)
 

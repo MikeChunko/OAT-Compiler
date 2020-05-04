@@ -23,16 +23,15 @@ module MakeSet (Ord : OrdPrintT) : SetS with type elt = Ord.t =
     include Set.Make (Ord)
 
     let of_list = List.fold_left (fun s e -> add e s) empty
-    
+
     let to_string t =
       let s = elements t
               |> List.map Ord.to_string
-              |> String.concat ", "
-      in
+              |> String.concat ", " in
       "{" ^ s ^ "}"
 
     let string_of_elt = Ord.to_string
-  
+
     let printer f t = Format.pp_print_string f (to_string t)
 
   end
@@ -69,7 +68,7 @@ module MakeMap (Ord : OrdPrintT) : MapS with type key = Ord.t =
               |> fold (has_binding_or_add m) n
               |> S.elements
 
-    let update_or d f k m = 
+    let update_or d f k m =
       add k (f @@ find_or d m k) m
 
     let to_string val_str t =
@@ -104,7 +103,6 @@ module Uid =
 
 module UidS = MakeSet (Uid)
 module UidM = MakeMap (Uid)
-
 
 (** For testing   *)
 let uidm (b:(Ll.uid * 'a) list) : 'a UidM.t =

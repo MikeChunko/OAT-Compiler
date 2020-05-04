@@ -12,20 +12,15 @@ open Datastructures
    - b: the current ll block
 
    Note:
-     Call instructions are never considered to be dead (they might produce
-     side effects)
-
-     Store instructions are not dead if the pointer written to is live _or_
-     the pointer written to may be aliased.
-
-     Other instructions are dead if the value they compute is not live.
-
-   Hint: Consider using List.filter
- *)
+     - Call instructions are never considered to be dead (they might produce
+       side effects)
+     - Store instructions are not dead if the pointer written to is live _or_
+       the pointer written to may be aliased.
+     - Other instructions are dead if the value they compute is not live.  *)
 let dce_block (lb:uid -> Liveness.Fact.t) (ab:uid -> Alias.fact) (b:Ll.block) : Ll.block =
   let rec dce_helper (b_old:Ll.block) (b_new:Ll.block) : Ll.block =
     match b_old.insns with
-    | [] -> {b_new with insns = List.rev b_new.insns}
+    | []        -> {b_new with insns = List.rev b_new.insns}
     | (u,i)::tl -> (match i with
       | Call _            -> dce_helper {b_old with insns = tl} {b_new with insns = (u,i)::b_new.insns}
       | Store(_,_,Id u')  ->
@@ -36,7 +31,7 @@ let dce_block (lb:uid -> Liveness.Fact.t) (ab:uid -> Alias.fact) (b:Ll.block) : 
         if liveness_cond || alias_cond
         then dce_helper {b_old with insns = tl} {b_new with insns = (u,i)::b_new.insns}
         else dce_helper {b_old with insns = tl} b_new
-      | Store(_,_,Gid u') -> (* Hardcode for globals - I don't know a better way to do this *)
+      | Store(_,_,Gid u') -> (* Stores to globals should never be optimized out *)
         dce_helper {b_old with insns = tl} {b_new with insns = (u,i)::b_new.insns}
       | _                 ->
         if Datastructures.UidS.mem u (lb u)
@@ -45,7 +40,6 @@ let dce_block (lb:uid -> Liveness.Fact.t) (ab:uid -> Alias.fact) (b:Ll.block) : 
   dce_helper b {b with insns = []}
 
 let run (lg:Liveness.Graph.t) (ag:Alias.Graph.t) (cfg:Cfg.t) : Cfg.t =
-
   LblS.fold (fun l cfg ->
     let b = Cfg.block cfg l in
 

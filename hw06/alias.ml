@@ -17,7 +17,6 @@ module SymPtr =
       | MayAlias   -> "MayAlias"
       | Unique     -> "Unique"
       | UndefAlias -> "UndefAlias"
-
   end
 
 (* The analysis computes, at each program point, which UIDs in scope are a unique name
@@ -25,14 +24,11 @@ module SymPtr =
 type fact = SymPtr.t UidM.t
 
 (* flow function across Ll instructions ------------------------------------- *)
-(* TASK: complete the flow function for alias analysis.
-
-   - After an alloca, the defined UID is the unique name for a stack slot
+(* - After an alloca, the defined UID is the unique name for a stack slot
    - A pointer returned by a load, call, bitcast, or GEP may be aliased
    - A pointer passed as an argument to a call, bitcast, GEP, or store
      (as the value being stored) may be aliased
-   - Other instructions do not define pointers
- *)
+   - Other instructions do not define pointers *)
 let insn_flow ((u,i):uid * insn) (d:fact) : fact =
   let rec call_add_args (args:(ty * operand) list) (d:fact) : fact =
     match args with
@@ -41,15 +37,15 @@ let insn_flow ((u,i):uid * insn) (d:fact) : fact =
       | Ptr _, Id u -> UidM.add u SymPtr.MayAlias d
       | _           -> call_add_args tl d) in
   match i with
-  | Alloca _ -> UidM.add u SymPtr.Unique d
+  | Alloca _              -> UidM.add u SymPtr.Unique d
   | Load (Ptr (Ptr _), _) -> UidM.add u SymPtr.MayAlias d
   | Call (Ptr _, _, args) -> UidM.add u SymPtr.MayAlias (call_add_args args d)
   | Bitcast (Ptr _, u', _)
   | Gep (_, u', _)        -> (match u' with
     | Ll.Id u' -> UidM.add u' SymPtr.MayAlias (UidM.add u SymPtr.MayAlias d)
-    | _        -> UidM.add u SymPtr.MayAlias d)
+    | _        -> UidM.add u  SymPtr.MayAlias d)
   | Store (Ptr _,Id u',_) -> UidM.add u' SymPtr.MayAlias d
-  | _                     -> UidM.add u SymPtr.UndefAlias d
+  | _                     -> UidM.add u  SymPtr.UndefAlias d
 
 (* The flow function across terminators is trivial: they never change alias info *)
 let terminator_flow t (d:fact) : fact = d
@@ -74,14 +70,8 @@ module Fact =
     let to_string : fact -> string =
       UidM.to_string (fun _ v -> SymPtr.to_string v)
 
-    (* TASK: complete the "combine" operation for alias analysis.
-
-       The alias analysis should take the meet over predecessors to compute the
-       flow into a node. You may find the UidM.merge function useful.
-
-       It may be useful to define a helper function that knows how to take the
-       meet of two SymPtr.t facts.
-    *)
+    (* The alias analysis should take the meet over predecessors to compute the
+       flow into a node. You may find the UidM.merge function useful. *)
     let rec combine (ds:fact list) : fact =
       let fact_merge (key:Datastructures.UidM.key) (m1:'a option) (m2:'b option) : 'c option =
         match m1 with

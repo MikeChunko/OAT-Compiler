@@ -12,16 +12,16 @@ module SymConst =
 
     let compare s t =
       match (s, t) with
-      | (Const i, Const j) -> Int64.compare i j
-      | (NonConst, NonConst) | (UndefConst, UndefConst) -> 0
+      | (Const i, Const j)              -> Int64.compare i j
+      | (NonConst, NonConst) 
+      | (UndefConst, UndefConst)        -> 0
       | (NonConst, _) | (_, UndefConst) -> 1
       | (UndefConst, _) | (_, NonConst) -> -1
 
     let to_string : t -> string = function
-      | NonConst -> "NonConst"
-      | Const i -> Printf.sprintf "Const (%LdL)" i
+      | NonConst   -> "NonConst"
+      | Const i    -> Printf.sprintf "Const (%LdL)" i
       | UndefConst -> "UndefConst"
-
   end
 
 (* The analysis computes, at each program point, which UIDs in scope will evaluate
@@ -42,8 +42,7 @@ let cmp_op (u:Ll.operand) (d:fact) : SymConst.t =
    - Uid of a binop or icmp with an UndefConst argument is UndefConst-out
    - Uid of a binop or icmp with an NonConst argument is NonConst-out
    - Uid of stores and void calls are UndefConst-out
-   - Uid of all other instructions are NonConst-out
- *)
+   - Uid of all other instructions are NonConst-out *)
 let insn_flow (u,i:uid * insn) (d:fact) : fact =
   let cmp_bop (op:Ll.bop) (u1:Ll.operand) (u2:Ll.operand) : SymConst.t =
     let op1, op2 = cmp_op u1 d, cmp_op u2 d in
@@ -64,9 +63,7 @@ let insn_flow (u,i:uid * insn) (d:fact) : fact =
       | Xor  -> Int64.logxor c1 c2) in
   let cmp_icmp (op:Ll.cnd) (u1:Ll.operand) (u2:Ll.operand) : SymConst.t =
     let of_bool (b:bool) : int64 =
-      if b
-      then 1L
-      else 0L in
+      if b then 1L else 0L in
     let op1, op2 = cmp_op u1 d, cmp_op u2 d in
     match op1, op2 with
     | NonConst,_
@@ -134,8 +131,7 @@ let analyze (g:Cfg.t) : Graph.t =
      function is not a constant *)
   let cp_in = List.fold_right
     (fun (u,_) -> UidM.add u SymConst.NonConst)
-    g.Cfg.args UidM.empty
-  in
+    g.Cfg.args UidM.empty in
   let fg = Graph.of_cfg init cp_in g in
   Solver.solve fg
 
@@ -170,7 +166,6 @@ let run (cg:Graph.t) (cfg:Cfg.t) : Cfg.t =
           | Gep(ty,op,oplst)      -> Gep(ty,op,List.map (fun op -> cmp_op u op) oplst)
           | _                     -> i) in
         cp_helper {b_old with insns = tl} {b_new with insns = newinsn::b_new.insns} in
-    {cfg with  blocks = Datastructures.LblM.add l (cp_helper b {insns = []; term = cmp_term b.term}) cfg.blocks}
-  in
+    {cfg with  blocks = Datastructures.LblM.add l (cp_helper b {insns = []; term = cmp_term b.term}) cfg.blocks} in
 
   LblS.fold cp_block (Cfg.nodes cfg) cfg

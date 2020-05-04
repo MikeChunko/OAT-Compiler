@@ -1,30 +1,29 @@
 open Ll
-open Datastructures                                     
+open Datastructures
 
 (* liveness analysis -------------------------------------------------------- *)
 
 (* Instantiates the generic dataflow analysis framework with the
    lattice for liveness analysis.
      - the lattice elements are sets of LL uids
-     - the flow functions propagate uses toward their definitions
-*)
+     - the flow functions propagate uses toward their definitions *)
 
 (* the operands of an instruction ------------------------------------------- *)
-let insn_ops : insn -> operand list = function 
+let insn_ops : insn -> operand list = function
   | Alloca _         -> []
   | Load (_,o)
   | Bitcast (_,o,_)  -> [o]
-  | Binop (_,_,o1,o2) 
+  | Binop (_,_,o1,o2)
   | Store (_,o1,o2)
   | Icmp (_,_,o1,o2) -> [o1; o2]
   | Call (_,o,args)  -> o::List.map snd args
   | Gep (_,o,os)     -> o::os
 
 (* the operands of a terminator --------------------------------------------- *)
-let terminator_ops : terminator -> operand list = function 
+let terminator_ops : terminator -> operand list = function
   | Ret (_,None)
   | Br _        -> []
-  | Ret (_,Some o) 
+  | Ret (_,Some o)
   | Cbr (o,_,_) -> [o]
 
 (* compute 'use' information for instructions and terminators --------------- *)
@@ -39,7 +38,7 @@ let terminator_uses (t:terminator) : UidS.t = uids_of_ops (terminator_ops t)
 
    the dataflow equation for liveness analysis is:
          in[n] = use[n] U (out[n] \ defs[n])
-   
+
    Because liveness is a backward analysis, the flow function expresses
    in[n] as a _function_ of n and out[n]:
       in[n] = flow n out[n]
@@ -58,7 +57,7 @@ module Fact =
     let forwards = false
     let insn_flow = insn_flow
     let terminator_flow = terminator_flow
-    
+
     (* the lattice ---------------------------------------------------------- *)
     type t = UidS.t
     let combine ds = List.fold_left UidS.union UidS.empty ds
@@ -80,9 +79,8 @@ let analyze (cfg:Cfg.cfg) : Graph.t =
   Solver.solve g
 
 (* Get liveness information as taken in by the backend. For the live_in map,
-   for each block label or instruction uid in the graph, the result is the set of 
-   ids that are live on entry to that block or instruction. Similarly for live_out.
-*)
+   for each block label or instruction uid in the graph, the result is the set of
+   ids that are live on entry to that block or instruction. Similarly for live_out. *)
 type liveness = {live_in : uid -> UidS.t; live_out : uid -> UidS.t}
 let get_liveness (f : Ll.fdecl) : liveness =
   let cfg = Cfg.of_ast f in

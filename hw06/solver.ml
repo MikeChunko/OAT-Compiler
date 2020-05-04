@@ -20,9 +20,7 @@ open Datastructures
    represented by the "find_fact" function:
      out[n] = find_fact g n
    The input information for [n] is implicitly represented by:
-     in[n] = combine preds[n] (out[n])
-
-*)
+     in[n] = combine preds[n] (out[n]) *)
 module type DFA_GRAPH =
   sig
     module NodeS : SetS
@@ -41,8 +39,7 @@ module type DFA_GRAPH =
 
     (* the flow function:
        given a graph node and input fact, compute the resulting fact on the
-       output edge of the node
-    *)
+       output edge of the node *)
     val flow : t -> node -> fact -> fact
 
     (* lookup / modify the dataflow annotations associated with a node *)
@@ -82,24 +79,18 @@ module type FACT =
           . apply the flow function to the combined input to find the new
             output
           . if the output has changed, update the graph and add the node's
-            successors to the worklist
-
-   TASK: complete the [solve] function, which implements the above algorithm.
-*)
-module Make (Fact : FACT) (Graph : DFA_GRAPH with type fact := Fact.t) =
+            successors to the worklist *)
+module Make (Fact:FACT) (Graph:DFA_GRAPH with type fact := Fact.t) =
   struct
-
     let solve (g:Graph.t) : Graph.t =
       let rec solve_helper (g:Graph.t) (nodeset:Graph.NodeS.t) : Graph.t =
         if Graph.NodeS.is_empty nodeset
-        then
-          g
+        then g
         else
           let node = Graph.NodeS.choose nodeset in
           let preds = Graph.NodeS.elements (Graph.preds g node) in
-          let pred_facts_combined = Fact.combine (List.map (
-              fun pred -> Graph.out g pred
-            ) preds ) in
+          let pred_facts_combined = Fact.combine (
+            List.map (fun pred -> Graph.out g pred) preds) in
           let new_output = Graph.flow g node pred_facts_combined in
           let nodeset' = Graph.NodeS.remove node nodeset in
           if Fact.compare new_output (Graph.out g node) <> 0

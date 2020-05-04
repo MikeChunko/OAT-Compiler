@@ -842,9 +842,9 @@ let better_layout (f:Ll.fdecl) (live:liveness) : layout =
     | [] -> print_string "END OF COLORING\n\n"
     | (u,c)::tl -> print_string (u ^ ": " ^ (string_of_int c) ^ "\n"); print_coloring tl in
 
-  let coloring = gen_coloring rig [] pal_size 0 in
+  let coloring = gen_coloring rig [] pal_size 1 in
   (*print_string "\n";
-  print_coloring coloring; *)(*DEBUG*)
+  print_coloring coloring;*) (*DEBUG*)
 
   (* Allocates a uid greedily based on liveness information *)
   (* TODO: Change this function to use non-coalescing graph coloring w/ heuristics *)

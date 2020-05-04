@@ -738,27 +738,33 @@ let better_layout (f:Ll.fdecl) (live:liveness) : layout =
     List.rev @@ construct pal_size in
 
   (* Generates the Register Inteference Graph for a block *)
-  let rec gen_rig_block (block:Ll.block) (live:liveness) (rig:rig_fact) : rig_fact =
+  let rec gen_rig_block (block:Ll.block) (live:liveness) (rig:rig_fact) (counter:int) : rig_fact =
     (* Given a set of nodes that are live at the same point,
       for all nodes in the set, adds the full set as edges in the RIG. *)
     let rec add_to_rig (live:UidS.t) (acc:UidS.t) (rig:rig_fact) : rig_fact =
       match UidS.choose_opt live with
-      | None     -> (*print_string "\n";*) rig
-      | Some uid -> (*print_string uid;*)
+      | None     -> print_string "\n"; rig
+      | Some uid -> print_string uid;
         let rig' = match UidM.find_opt uid rig with
           | None      -> UidM.add uid (UidS.remove uid acc) rig
           | Some uids -> UidM.add uid (UidS.remove uid @@ UidS.union uids acc) rig in
         add_to_rig (UidS.remove uid live) acc rig' in
     match block.insns with
     | (u,i)::tl ->
-      let liveness_info = live.live_out u in
-      let rig' = add_to_rig liveness_info liveness_info rig in
-      gen_rig_block {block with insns = tl} live rig'
+      if counter == 0
+      then (* Start with live_in to ensure nothing is missed *)
+        let liveness_info = live.live_in u in
+        let rig' = add_to_rig liveness_info liveness_info rig in
+        gen_rig_block block live rig' (counter+1)
+      else
+        let liveness_info = live.live_out u in
+        let rig' = add_to_rig liveness_info liveness_info rig in
+        gen_rig_block {block with insns = tl} live rig' (counter+1)
     | []        -> rig
 
   and gen_rig_cfg (cfg:Ll.cfg) (live:liveness) : rig_fact =
-    let rig = gen_rig_block (fst cfg) live UidM.empty in
-    List.fold_left (fun rig (_,block) -> gen_rig_block block live rig) rig (snd cfg) in
+    let rig = gen_rig_block (fst cfg) live UidM.empty 0 in
+    List.fold_left (fun rig (_,block) -> gen_rig_block block live rig 0) rig (snd cfg) in
 
   (* Debug method *)
   let rec print_rig (rig:rig_fact) : unit =
@@ -771,8 +777,8 @@ let better_layout (f:Ll.fdecl) (live:liveness) : layout =
     | Some (k,uids) -> print_string (k ^ ": " ^ (string_of_uids uids) ^ "\n"); print_rig (UidM.remove k rig) in
 
   let rig = gen_rig_cfg f.f_cfg live in
-  (*print_string "\n";
-  print_rig rig;*) (* DEBUG *)
+  print_string "\n";
+  print_rig rig; (* DEBUG *)
 
   (* Rudimentarily create a k-coloring for every node in RIG.
      If a k-coloring cannot be done, spill the extra nodes using a heuristic.
@@ -847,8 +853,8 @@ let better_layout (f:Ll.fdecl) (live:liveness) : layout =
     | (u,c)::tl -> print_string (u ^ ": " ^ (string_of_int c) ^ "\n"); print_coloring tl in
 
   let coloring = gen_coloring rig [] pal_size 1 in
-  (*print_string "\n";
-  print_coloring coloring;*) (*DEBUG*)
+  print_string "\n";
+  print_coloring coloring; (*DEBUG*)
 
   (* Allocates a uid greedily based on liveness information *)
   (* TODO: Change this function to use non-coalescing graph coloring w/ heuristics *)

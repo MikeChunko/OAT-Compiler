@@ -707,20 +707,10 @@ type coloring = (uid * int) list
 let better_layout (f:Ll.fdecl) (live:liveness) : layout =
   let open Datastructures in
 
-  let n_arg = ref 0 in
+  let n_arg = ref 1 in
   let n_spill = ref 0 in
 
   let spill () = (incr n_spill; Alloc.LStk (- !n_spill)) in
-
-  (* Allocates a destination location for an incoming function parameter.
-     Corner case: argument 3, in Rcx occupies a register used for other
-     purposes by the compiler.  We therefore always spill it. *)
-  let alloc_arg () =
-    let res =
-      match arg_loc !n_arg with
-      | Alloc.LReg Rcx -> spill ()
-      | x              -> x in
-    incr n_arg; res in
 
   (* The available palette of registers.  Excludes Rax and Rcx *)
   let pal = LocSet.(caller_save
@@ -864,32 +854,52 @@ let better_layout (f:Ll.fdecl) (live:liveness) : layout =
   (*print_string "\n";
   print_coloring coloring;*) (*DEBUG*)
 
+  let arg_reg : int -> X86.reg option = function
+    | 1 -> Some Rdi
+    | 2 -> Some Rsi
+    | 3 -> Some Rdx
+    | 4 -> Some R08
+    | 5 -> Some R09
+    | 6 -> Some R10
+    | 7 -> Some R11
+    | n -> None in
+
+  let arg_loc (n:int) : Alloc.loc =
+    match arg_reg n with
+    | None   -> spill ()
+    | Some r -> Alloc.LReg r in
+
   let allocate lo coloring uid =
-    let arg_reg : int -> X86.reg option = function
-      | 1 -> Some Rdi
-      | 2 -> Some Rsi
-      | 3 -> Some Rdx
-      | 4 -> Some R08
-      | 5 -> Some R09
-      | 6 -> Some R10
-      | 7 -> Some R11
-      | n -> None in
-    let arg_loc (n:int) : Alloc.loc =
-      match arg_reg n with
-      | None   -> Alloc.LStk (n-4)
-      | Some r -> Alloc.LReg r in
     let loc = match List.assoc_opt uid coloring with
       | None   -> spill ()
-      | Some c -> (match arg_loc c with
-        | Alloc.LReg Rcx -> spill () (* Can't use Rcx because reasons *)
-        | Alloc.LStk _   -> spill ()
-        | x              -> x) in
+      | Some c -> arg_loc c in
     print_string (uid ^ ": " ^ (Alloc.str_loc loc) ^ "\n");
     Platform.verb @@ Printf.sprintf "allocated: %s <- %s\n" (Alloc.str_loc loc) uid; loc in
 
+    let allocate_arg lo coloring uid uid' =
+      (* Allocates a destination location for an incoming function parameter.
+         Corner case: argument 3, in Rcx occupies a register used for other
+         purposes by the compiler.  We therefore always spill it. *)
+      let alloc_arg () =
+        let res =
+          match arg_loc !n_arg with
+          | Alloc.LReg Rcx -> spill ()
+          | x              -> x in
+        incr n_arg; res in
+
+      let loc = match UidS.find_opt uid (live.live_in uid') with
+        | Some _ -> incr n_arg; allocate lo coloring uid
+        | None   -> alloc_arg () in
+      print_string (uid ^ ":' " ^ (Alloc.str_loc loc) ^ "\n");
+      Platform.verb @@ Printf.sprintf "allocated: %s <- %s\n" (Alloc.str_loc loc) uid; loc in
+
+  let f_head = match (fst f.f_cfg).insns with
+    | []       -> fst (fst f.f_cfg).term
+    | (u,_)::_ -> u in
+
   let lo =
     fold_fdecl
-      (fun lo (x, _) -> (x, allocate lo coloring x)::lo (*(x, alloc_arg())::lo*))
+      (fun lo (x, _) -> (x, allocate_arg lo coloring x f_head)::lo (*(x, alloc_arg())::lo*))
       (fun lo l -> (l, Alloc.LLbl (Platform.mangle l))::lo)
       (fun lo (x, i) ->
         if insn_assigns i

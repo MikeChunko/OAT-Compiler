@@ -173,8 +173,8 @@ let arg_reg : int -> X86.reg option = function
 
 let arg_loc (n:int) : Alloc.loc =
   match arg_reg n with
+  | None   -> Alloc.LStk (n-4)
   | Some r -> Alloc.LReg r
-  | None -> Alloc.LStk (n-4)
 
 let alloc_fdecl (layout:layout) (liveness:liveness) (f:Ll.fdecl) : Alloc.fbody =
   let dst  = List.map layout.uid_loc f.f_param in
@@ -615,7 +615,7 @@ let greedy_layout (f:Ll.fdecl) (live:liveness) : layout =
       match arg_loc !n_arg with
       | Alloc.LReg Rcx -> spill ()
       | x -> x in
-    incr n_arg; res in
+    incr n_arg; print_string ("ARG: " ^ (Alloc.str_loc res) ^ "\n"); res in
   (* The available palette of registers.  Excludes Rax and Rcx *)
   let pal = LocSet.(caller_save
                     |> remove (Alloc.LReg Rax)
@@ -631,6 +631,7 @@ let greedy_layout (f:Ll.fdecl) (live:liveness) : layout =
       LocSet.choose available_locs
     with
     | Not_found -> spill () in
+    print_string (uid ^ ": " ^ (Alloc.str_loc loc) ^ "\n");
     Platform.verb @@ Printf.sprintf "allocated: %s <- %s\n" (Alloc.str_loc loc) uid; loc in
 
   let lo =
@@ -729,6 +730,13 @@ let better_layout (f:Ll.fdecl) (live:liveness) : layout =
 
   let pal_size = LocSet.cardinal pal in
 
+  let rec print_pal locs =
+    match LocSet.choose_opt locs with
+    | None -> print_string "\n"
+    | Some l -> print_string ((Alloc.str_loc l) ^ "; "); print_pal @@ LocSet.remove l locs in
+
+  (*print_pal pal;*)
+
   (* All colors (represented numerically) available for the graph coloring *)
   let total_colors =
     let rec construct k =
@@ -743,8 +751,8 @@ let better_layout (f:Ll.fdecl) (live:liveness) : layout =
       for all nodes in the set, adds the full set as edges in the RIG. *)
     let rec add_to_rig (live:UidS.t) (acc:UidS.t) (rig:rig_fact) : rig_fact =
       match UidS.choose_opt live with
-      | None     -> print_string "\n"; rig
-      | Some uid -> print_string uid;
+      | None     -> (*print_string "\n";*) rig
+      | Some uid -> (*print_string uid;*)
         let rig' = match UidM.find_opt uid rig with
           | None      -> UidM.add uid (UidS.remove uid acc) rig
           | Some uids -> UidM.add uid (UidS.remove uid @@ UidS.union uids acc) rig in
@@ -777,8 +785,8 @@ let better_layout (f:Ll.fdecl) (live:liveness) : layout =
     | Some (k,uids) -> print_string (k ^ ": " ^ (string_of_uids uids) ^ "\n"); print_rig (UidM.remove k rig) in
 
   let rig = gen_rig_cfg f.f_cfg live in
-  print_string "\n";
-  print_rig rig; (* DEBUG *)
+  (*print_string "\n";
+  print_rig rig;*) (* DEBUG *)
 
   (* Rudimentarily create a k-coloring for every node in RIG.
      If a k-coloring cannot be done, spill the extra nodes using a heuristic.
@@ -853,34 +861,59 @@ let better_layout (f:Ll.fdecl) (live:liveness) : layout =
     | (u,c)::tl -> print_string (u ^ ": " ^ (string_of_int c) ^ "\n"); print_coloring tl in
 
   let coloring = gen_coloring rig [] pal_size 1 in
-  print_string "\n";
-  print_coloring coloring; (*DEBUG*)
+  (*print_string "\n";
+  print_coloring coloring;*) (*DEBUG*)
 
-  (* Allocates a uid greedily based on liveness information *)
-  (* TODO: Change this function to use non-coalescing graph coloring w/ heuristics *)
-  let allocate lo uid =
-    let loc =
-    try
-      let used_locs = UidSet.fold (fun y -> LocSet.add (List.assoc y lo)) (live.live_in uid) LocSet.empty in
-      let available_locs = LocSet.diff pal used_locs in
-      LocSet.choose available_locs
-    with
-      | Not_found -> spill () in
+  let allocate lo coloring uid =
+    let arg_reg : int -> X86.reg option = function
+      | 1 -> Some Rdi
+      | 2 -> Some Rsi
+      | 3 -> Some Rdx
+      | 4 -> Some R08
+      | 5 -> Some R09
+      | 6 -> Some R10
+      | 7 -> Some R11
+      | n -> None in
+    let arg_loc (n:int) : Alloc.loc =
+      match arg_reg n with
+      | None   -> Alloc.LStk (n-4)
+      | Some r -> Alloc.LReg r in
+    let loc = match List.assoc_opt uid coloring with
+      | None   -> spill ()
+      | Some c -> (match arg_loc c with
+        | Alloc.LReg Rcx -> spill () (* Can't use Rcx because reasons *)
+        | Alloc.LStk _   -> spill ()
+        | x              -> x) in
+    print_string (uid ^ ": " ^ (Alloc.str_loc loc) ^ "\n");
     Platform.verb @@ Printf.sprintf "allocated: %s <- %s\n" (Alloc.str_loc loc) uid; loc in
 
   let lo =
     fold_fdecl
-      (fun lo (x, _) -> (x, alloc_arg())::lo)
+      (fun lo (x, _) -> (x, allocate lo coloring x)::lo (*(x, alloc_arg())::lo*))
       (fun lo l -> (l, Alloc.LLbl (Platform.mangle l))::lo)
       (fun lo (x, i) ->
         if insn_assigns i
-        then (x, allocate lo x)::lo
+        then (x, allocate lo coloring x)::lo
         else (x, Alloc.LVoid)::lo)
       (fun lo _ -> lo)
       [] f in
   { uid_loc = (fun x -> List.assoc x lo)
   ; spill_bytes = 8 * !n_spill
   }
+(*  _argc4: LStk -1
+    _argv1: LStk -2
+    _x7: %rsi
+    _i9: %rdi
+    _x16: %r8 
+    _i17: %rdx
+    _bop18: %rdx
+    _i19: %r8 
+    _bop20: %rdx
+    _i22: %rdx
+    _bop23: %rdx
+    _i11: %rdx
+    _bop12: %rdx
+    _x25: %rdi *)
 
 (* register allocation options ---------------------------------------------- *)
 (* A trivial liveness analysis that conservatively says that every defined

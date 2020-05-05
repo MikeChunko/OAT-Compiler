@@ -610,12 +610,12 @@ let greedy_layout (f:Ll.fdecl) (live:liveness) : layout =
   (* Allocates a destination location for an incoming function parameter.
      Corner case: argument 3, in Rcx occupies a register used for other
      purposes by the compiler.  We therefore always spill it. *)
-  let alloc_arg () =
+  let alloc_arg u =
     let res =
       match arg_loc !n_arg with
       | Alloc.LReg Rcx -> spill ()
       | x -> x in
-    incr n_arg; print_string ("ARG: " ^ (Alloc.str_loc res) ^ "\n"); res in
+    incr n_arg; print_string (u ^ ": " ^ (Alloc.str_loc res) ^ "\n"); res in
   (* The available palette of registers.  Excludes Rax and Rcx *)
   let pal = LocSet.(caller_save
                     |> remove (Alloc.LReg Rax)
@@ -636,7 +636,7 @@ let greedy_layout (f:Ll.fdecl) (live:liveness) : layout =
 
   let lo =
     fold_fdecl
-      (fun lo (x, _) -> (x, alloc_arg())::lo)
+      (fun lo (x, _) -> (x, alloc_arg x)::lo)
       (fun lo l -> (l, Alloc.LLbl (Platform.mangle l))::lo)
       (fun lo (x, i) ->
         if insn_assigns i
@@ -885,7 +885,7 @@ let better_layout (f:Ll.fdecl) (live:liveness) : layout =
           match arg_loc !n_arg with
           | Alloc.LReg Rcx -> spill ()
           | x              -> x in
-        incr n_arg; res in
+        (*incr n_arg;*) res in
 
       let loc = match UidS.find_opt uid (live.live_in uid') with
         | Some _ -> incr n_arg; allocate lo coloring uid
@@ -899,7 +899,7 @@ let better_layout (f:Ll.fdecl) (live:liveness) : layout =
 
   let lo =
     fold_fdecl
-      (fun lo (x, _) -> (x, allocate_arg lo coloring x f_head)::lo (*(x, alloc_arg())::lo*))
+      (fun lo (x, _) -> (x, allocate_arg lo coloring x f_head)::lo)
       (fun lo l -> (l, Alloc.LLbl (Platform.mangle l))::lo)
       (fun lo (x, i) ->
         if insn_assigns i
@@ -910,20 +910,6 @@ let better_layout (f:Ll.fdecl) (live:liveness) : layout =
   { uid_loc = (fun x -> List.assoc x lo)
   ; spill_bytes = 8 * !n_spill
   }
-(*  _argc4: LStk -1
-    _argv1: LStk -2
-    _x7: %rsi
-    _i9: %rdi
-    _x16: %r8 
-    _i17: %rdx
-    _bop18: %rdx
-    _i19: %r8 
-    _bop20: %rdx
-    _i22: %rdx
-    _bop23: %rdx
-    _i11: %rdx
-    _bop12: %rdx
-    _x25: %rdi *)
 
 (* register allocation options ---------------------------------------------- *)
 (* A trivial liveness analysis that conservatively says that every defined

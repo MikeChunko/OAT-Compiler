@@ -709,6 +709,7 @@ let better_layout (f:Ll.fdecl) (live:liveness) : layout =
 
   let n_arg = ref 1 in
   let n_spill = ref 0 in
+  let n_color_args = ref 1 in
 
   let spill () = (incr n_spill; Alloc.LStk (- !n_spill)) in
 
@@ -735,6 +736,21 @@ let better_layout (f:Ll.fdecl) (live:liveness) : layout =
       else k::(construct @@ k - 1) in
     List.rev @@ construct pal_size in
 
+  let arg_reg : int -> X86.reg option = function
+    | 1 -> Some Rdi
+    | 2 -> Some Rsi
+    | 3 -> Some Rdx
+    | 4 -> Some R08
+    | 5 -> Some R09
+    | 6 -> Some R10
+    | 7 -> Some R11
+    | n -> None in
+
+  let arg_loc (n:int) : Alloc.loc =
+    match arg_reg n with
+    | None   -> spill ()
+    | Some r -> Alloc.LReg r in
+
   (* Generates the Register Inteference Graph for a block *)
   let rec gen_rig_block (block:Ll.block) (live:liveness) (rig:rig_fact) (counter:int) : rig_fact =
     (* Given a set of nodes that are live at the same point,
@@ -760,9 +776,10 @@ let better_layout (f:Ll.fdecl) (live:liveness) : layout =
         gen_rig_block {block with insns = tl} live rig' (counter+1)
     | []        -> rig
 
-  and gen_rig_cfg (cfg:Ll.cfg) (live:liveness) : rig_fact =
-    let rig = gen_rig_block (fst cfg) live UidM.empty 0 in
-    List.fold_left (fun rig (_,block) -> gen_rig_block block live rig 0) rig (snd cfg) in
+  and gen_rig_cfg (cfg:Ll.cfg) (args:uid list) (live:liveness) : rig_fact =
+    let rig = List.fold_left (fun rig arg -> UidM.add arg UidS.empty rig) UidM.empty args in
+    let rig' = gen_rig_block (fst cfg) live rig 0 in
+    List.fold_left (fun rig (_,block) -> gen_rig_block block live rig 0) rig' (snd cfg) in
 
   (* Debug method *)
   let rec print_rig (rig:rig_fact) : unit =
@@ -774,14 +791,14 @@ let better_layout (f:Ll.fdecl) (live:liveness) : layout =
     | None          -> print_string "END OF RIG\n\n"
     | Some (k,uids) -> print_string (k ^ ": " ^ (string_of_uids uids) ^ "\n"); print_rig (UidM.remove k rig) in
 
-  let rig = gen_rig_cfg f.f_cfg live in
+  let rig = gen_rig_cfg f.f_cfg f.f_param live in
   (*print_string "\n";
   print_rig rig;*) (* DEBUG *)
 
   (* Rudimentarily create a k-coloring for every node in RIG.
      If a k-coloring cannot be done, spill the extra nodes using a heuristic.
      Heuristic: Candidate with most edges. *)
-  let rec gen_coloring (rig:rig_fact) (coloring:coloring) (k:int) (num_spill:int) : coloring =
+  let rec gen_coloring (rig:rig_fact) (coloring:coloring) (args:uid list) (k:int) (num_spill:int) : coloring =
     (* Create an association list containing the number of neighbors of each uid in the RIG. *)
     let rec cardinality (rig:rig_fact) : (uid * int) list =
       match UidM.choose_opt rig with
@@ -796,16 +813,23 @@ let better_layout (f:Ll.fdecl) (live:liveness) : layout =
     (*print_cardinality @@ cardinality rig;*)
 
     (* Pick a node to pull frm the rig.
-       Whichever node has the highest cardinalit will be picked*)
-    let pick_node (rig:rig_fact) : uid =
-      let rec pick_node_helper (cardinality:(uid * int) list) (acc:uid * int) : uid =
+       Whichever node has the highest cardinality will be picked.
+       Function arg will always be picked first. *)
+    let pick_node (args:uid list) (rig:rig_fact) : uid =
+      let rec pick_node_arg (args:uid list) (rig:rig_fact) : uid =
+        match args with
+        | []    -> pick_node_cardinality (cardinality rig) ("None", -1)
+        | h::tl -> (match UidM.find_opt h rig with
+          | None   -> pick_node_arg tl rig
+          | Some _ -> h)
+      and pick_node_cardinality (cardinality:(uid * int) list) (acc:uid * int) : uid =
         match cardinality with
         | []        -> fst acc
         | (u,i)::tl ->
           if i > snd acc
-          then pick_node_helper tl (u,i)
-          else pick_node_helper tl acc in
-      pick_node_helper (cardinality rig) ("None", -1) in
+          then pick_node_cardinality tl (u,i)
+          else pick_node_cardinality tl acc in
+      pick_node_arg args rig in
 
     (* Remove all instances of u in the RIG.
        Remove its mapping and it from the UidS of all other nodes *)
@@ -820,7 +844,7 @@ let better_layout (f:Ll.fdecl) (live:liveness) : layout =
       remove_from_sets u (UidM.remove u rig) (UidM.remove u rig) in
 
     (* Choose the first available color for a node *)
-    let choose_color (u:uid) (rig:rig_fact) (coloring:coloring) (colors:int list): int =
+    let choose_color (u:uid) (rig:rig_fact) (coloring:coloring) (colors:int list) (args:uid list): int =
       let rec choose_color_helper (uids:UidS.t) (coloring:coloring) (colors:int list) : int =
         match UidS.choose_opt uids with
         | None ->
@@ -832,17 +856,19 @@ let better_layout (f:Ll.fdecl) (live:liveness) : layout =
             | None   -> colors
             | Some c -> List.filter (fun x -> x <> c) colors in
           choose_color_helper (UidS.remove u uids) coloring colors' in
-      choose_color_helper (UidM.find u rig) coloring colors in
+      if List.mem u args
+      then let c = !n_color_args in incr n_color_args; c
+      else choose_color_helper (UidM.find u rig) coloring colors in
 
-    let u = pick_node rig in
+    let u = pick_node args rig in
 
     if String.equal u "None" (* No more nodes left to pick *)
     then coloring
     else (
       let rig' = UidM.remove u rig in
-      let c = choose_color u rig coloring total_colors in
+      let c = choose_color u rig coloring total_colors f.f_param in
       let coloring' = (u,c)::coloring in
-      gen_coloring rig' coloring' k (if c > pal_size then num_spill + 1 else num_spill)) in
+      gen_coloring rig' coloring' f.f_param k (if c > pal_size then num_spill + 1 else num_spill)) in
 
   (* Debug method *)
   let rec print_coloring (coloring:coloring) : unit =
@@ -850,24 +876,9 @@ let better_layout (f:Ll.fdecl) (live:liveness) : layout =
     | [] -> print_string "END OF COLORING\n\n"
     | (u,c)::tl -> print_string (u ^ ": " ^ (string_of_int c) ^ "\n"); print_coloring tl in
 
-  let coloring = gen_coloring rig [] pal_size 1 in
-  (*print_string "\n";
-  print_coloring coloring;*) (*DEBUG*)
-
-  let arg_reg : int -> X86.reg option = function
-    | 1 -> Some Rdi
-    | 2 -> Some Rsi
-    | 3 -> Some Rdx
-    | 4 -> Some R08
-    | 5 -> Some R09
-    | 6 -> Some R10
-    | 7 -> Some R11
-    | n -> None in
-
-  let arg_loc (n:int) : Alloc.loc =
-    match arg_reg n with
-    | None   -> spill ()
-    | Some r -> Alloc.LReg r in
+  let coloring = gen_coloring rig [] f.f_param pal_size 1 in
+  print_string "\n";
+  print_coloring coloring; (*DEBUG*)
 
   let allocate lo coloring uid =
     let loc = match List.assoc_opt uid coloring with
@@ -876,30 +887,31 @@ let better_layout (f:Ll.fdecl) (live:liveness) : layout =
     print_string (uid ^ ": " ^ (Alloc.str_loc loc) ^ "\n");
     Platform.verb @@ Printf.sprintf "allocated: %s <- %s\n" (Alloc.str_loc loc) uid; loc in
 
-    let allocate_arg lo coloring uid uid' =
-      (* Allocates a destination location for an incoming function parameter.
-         Corner case: argument 3, in Rcx occupies a register used for other
-         purposes by the compiler.  We therefore always spill it. *)
-      let alloc_arg () =
-        let res =
-          match arg_loc !n_arg with
-          | Alloc.LReg Rcx -> spill ()
-          | x              -> x in
-        (*incr n_arg;*) res in
+  let allocate_arg lo coloring uid uid' =
+    (* Allocates a destination location for an incoming function parameter.
+        Corner case: argument 3, in Rcx occupies a register used for other
+        purposes by the compiler.  We therefore always spill it. *)
+    let alloc_arg () =
+      let res =
+        match arg_loc !n_arg with
+        | Alloc.LReg Rcx -> spill ()
+        | x              -> x in
+      (*incr n_arg;*) res in
 
-      let loc = match UidS.find_opt uid (live.live_in uid') with
-        | Some _ -> incr n_arg; allocate lo coloring uid
-        | None   -> alloc_arg () in
-      print_string (uid ^ ":' " ^ (Alloc.str_loc loc) ^ "\n");
-      Platform.verb @@ Printf.sprintf "allocated: %s <- %s\n" (Alloc.str_loc loc) uid; loc in
+    let loc = match UidS.find_opt uid (live.live_in uid') with
+      | Some _ -> incr n_arg; allocate lo coloring uid
+      | None   -> let x = arg_loc !n_arg in incr n_arg; x (*alloc_arg ()*) in
+    print_string (uid ^ ":' " ^ (Alloc.str_loc loc) ^ "\n");
+    Platform.verb @@ Printf.sprintf "allocated: %s <- %s\n" (Alloc.str_loc loc) uid; loc in
 
+  (* First instruction in f *)
   let f_head = match (fst f.f_cfg).insns with
     | []       -> fst (fst f.f_cfg).term
     | (u,_)::_ -> u in
 
   let lo =
     fold_fdecl
-      (fun lo (x, _) -> (x, allocate_arg lo coloring x f_head)::lo)
+      (fun lo (x, _) -> (x, allocate lo coloring x)::lo (*(x, allocate_arg lo coloring x f_head)::lo*))
       (fun lo l -> (l, Alloc.LLbl (Platform.mangle l))::lo)
       (fun lo (x, i) ->
         if insn_assigns i

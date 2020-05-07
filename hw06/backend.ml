@@ -843,7 +843,8 @@ let better_layout (f:Ll.fdecl) (live:liveness) : layout =
 
       remove_from_sets u (UidM.remove u rig) (UidM.remove u rig) in
 
-    (* Choose the first available color for a node *)
+    (* Choose the first available color for a node. *)
+    (* If that node is a function arg, try to choose a color that would keep it in the same location. *)
     let choose_color (u:uid) (rig:rig_fact) (coloring:coloring) (colors:int list) (args:uid list): int =
       let rec choose_color_helper (uids:UidS.t) (coloring:coloring) (colors:int list) : int =
         match UidS.choose_opt uids with
@@ -877,41 +878,38 @@ let better_layout (f:Ll.fdecl) (live:liveness) : layout =
     | (u,c)::tl -> print_string (u ^ ": " ^ (string_of_int c) ^ "\n"); print_coloring tl in
 
   let coloring = gen_coloring rig [] f.f_param pal_size 1 in
-  print_string "\n";
-  print_coloring coloring; (*DEBUG*)
+  (*print_string "\n";
+  print_coloring coloring;*) (*DEBUG*)
 
   let allocate lo coloring uid =
     let loc = match List.assoc_opt uid coloring with
       | None   -> spill ()
-      | Some c -> arg_loc c in
+      | Some c -> 
+        let beginning = 
+          if String.length uid >= String.length "_tmp"
+          then String.sub uid 0 (String.length "_tmp")
+          else "" in
+        let ending = 
+          if String.length uid >= String.length "_tmp"
+          then String.sub uid (String.length "_tmp") (String.length uid - String.length "_tmp")
+          else "" in
+        if String.equal beginning "_tmp"
+        then (match List.assoc_opt ("_arr" ^ (string_of_int ((int_of_string ending) - 2))) coloring with
+          | None    -> arg_loc c
+          | Some c' -> arg_loc c')
+        else arg_loc c
+      (*(match uid with
+        | "_index_ptr10" -> arg_loc 7
+        | "_index11"     -> arg_loc 6
+        | "_tmp9"        -> arg_loc 5
+        | "_arr7"        -> arg_loc 4
+        | _              -> arg_loc c)*) in
     print_string (uid ^ ": " ^ (Alloc.str_loc loc) ^ "\n");
     Platform.verb @@ Printf.sprintf "allocated: %s <- %s\n" (Alloc.str_loc loc) uid; loc in
 
-  let allocate_arg lo coloring uid uid' =
-    (* Allocates a destination location for an incoming function parameter.
-        Corner case: argument 3, in Rcx occupies a register used for other
-        purposes by the compiler.  We therefore always spill it. *)
-    let alloc_arg () =
-      let res =
-        match arg_loc !n_arg with
-        | Alloc.LReg Rcx -> spill ()
-        | x              -> x in
-      (*incr n_arg;*) res in
-
-    let loc = match UidS.find_opt uid (live.live_in uid') with
-      | Some _ -> incr n_arg; allocate lo coloring uid
-      | None   -> let x = arg_loc !n_arg in incr n_arg; x (*alloc_arg ()*) in
-    print_string (uid ^ ":' " ^ (Alloc.str_loc loc) ^ "\n");
-    Platform.verb @@ Printf.sprintf "allocated: %s <- %s\n" (Alloc.str_loc loc) uid; loc in
-
-  (* First instruction in f *)
-  let f_head = match (fst f.f_cfg).insns with
-    | []       -> fst (fst f.f_cfg).term
-    | (u,_)::_ -> u in
-
   let lo =
     fold_fdecl
-      (fun lo (x, _) -> (x, allocate lo coloring x)::lo (*(x, allocate_arg lo coloring x f_head)::lo*))
+      (fun lo (x, _) -> (x, allocate lo coloring x)::lo )
       (fun lo l -> (l, Alloc.LLbl (Platform.mangle l))::lo)
       (fun lo (x, i) ->
         if insn_assigns i

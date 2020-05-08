@@ -615,7 +615,7 @@ let greedy_layout (f:Ll.fdecl) (live:liveness) : layout =
       match arg_loc !n_arg with
       | Alloc.LReg Rcx -> spill ()
       | x -> x in
-    incr n_arg; (*print_string (u ^ ": " ^ (Alloc.str_loc res) ^ "\n");*) res in
+    incr n_arg; print_string (u ^ ": " ^ (Alloc.str_loc res) ^ "\n"); res in
   (* The available palette of registers.  Excludes Rax and Rcx *)
   let pal = LocSet.(caller_save
                     |> remove (Alloc.LReg Rax)
@@ -631,7 +631,7 @@ let greedy_layout (f:Ll.fdecl) (live:liveness) : layout =
       LocSet.choose available_locs
     with
     | Not_found -> spill () in
-    (*print_string (uid ^ ": " ^ (Alloc.str_loc loc) ^ "\n");*)
+    print_string (uid ^ ": " ^ (Alloc.str_loc loc) ^ "\n");
     Platform.verb @@ Printf.sprintf "allocated: %s <- %s\n" (Alloc.str_loc loc) uid; loc in
 
   let lo =
@@ -719,15 +719,7 @@ let better_layout (f:Ll.fdecl) (live:liveness) : layout =
                     |> add    (Alloc.LReg R15)
                     |> add    (Alloc.LReg R14)
                    ) in
-
   let pal_size = LocSet.cardinal pal in
-
-  let rec print_pal locs =
-    match LocSet.choose_opt locs with
-    | None   -> print_string "\n"
-    | Some l -> print_string ((Alloc.str_loc l) ^ "; "); print_pal @@ LocSet.remove l locs in
-
-  (*print_pal pal;*)
 
   (* All colors (represented numerically) available for the graph coloring *)
   let total_colors =
@@ -829,7 +821,8 @@ let better_layout (f:Ll.fdecl) (live:liveness) : layout =
         match cardinality with
         | []        -> fst acc
         | (u,i)::tl ->
-          if i > snd acc
+          (* Prioritize arrays *)
+          if (i > snd acc) || (String.length u > 10 && String.equal (String.sub u 0 10) "_raw_array")
           then pick_node_cardinality tl (u,i)
           else pick_node_cardinality tl acc in
       pick_node_arg args rig in
@@ -839,7 +832,7 @@ let better_layout (f:Ll.fdecl) (live:liveness) : layout =
     let remove_node (u:uid) (rig:rig_fact) : rig_fact =
       let rec remove_from_sets (u:uid) (rig:rig_fact) (acc:rig_fact) : rig_fact =
         match UidM.choose_opt rig with
-        | None -> acc
+        | None           -> acc
         | Some (k, uids) ->
           let acc' = UidM.add k (UidS.remove u uids) acc in
           remove_from_sets u (UidM.remove k rig) acc' in
@@ -851,7 +844,7 @@ let better_layout (f:Ll.fdecl) (live:liveness) : layout =
     let choose_color (u:uid) (rig:rig_fact) (coloring:coloring) (colors:int list) (args:uid list): int =
       let rec choose_color_helper (uids:UidS.t) (coloring:coloring) (colors:int list) : int =
         match UidS.choose_opt uids with
-        | None ->
+        | None   ->
           if colors == []
           then pal_size + num_spill
           else List.hd colors
@@ -901,7 +894,7 @@ let better_layout (f:Ll.fdecl) (live:liveness) : layout =
           | None    -> arg_loc c
           | Some c' -> arg_loc c')
         else arg_loc c in
-    (*print_string (uid ^ ": " ^ (Alloc.str_loc loc) ^ "\n");*)
+    print_string (uid ^ ": " ^ (Alloc.str_loc loc) ^ "\n");
     Platform.verb @@ Printf.sprintf "allocated: %s <- %s\n" (Alloc.str_loc loc) uid; loc in
 
   let lo =

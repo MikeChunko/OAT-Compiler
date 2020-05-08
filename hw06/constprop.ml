@@ -13,7 +13,7 @@ module SymConst =
     let compare s t =
       match (s, t) with
       | (Const i, Const j)              -> Int64.compare i j
-      | (NonConst, NonConst) 
+      | (NonConst, NonConst)
       | (UndefConst, UndefConst)        -> 0
       | (NonConst, _) | (_, UndefConst) -> 1
       | (UndefConst, _) | (_, NonConst) -> -1

@@ -24,7 +24,7 @@ let dce_block (lb:uid -> Liveness.Fact.t) (ab:uid -> Alias.fact) (b:Ll.block) : 
     | (u,i)::tl -> (match i with
       | Call _            -> dce_helper {b_old with insns = tl} {b_new with insns = (u,i)::b_new.insns}
       | Store(_,_,Id u')  ->
-        let liveness_cond =  Datastructures.UidS.mem u' (lb u) in
+        let liveness_cond = Datastructures.UidS.mem u' (lb u) in
         let alias_cond    = match Datastructures.UidM.find_opt u' (ab u) with
           | Some Alias.SymPtr.MayAlias -> true
           | _                          -> false in

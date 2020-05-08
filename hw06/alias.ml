@@ -77,12 +77,12 @@ module Fact =
         match m1 with
           | None     -> m2
           | Some lvl -> (match lvl with
-          | SymPtr.Unique     -> m1
-          | SymPtr.MayAlias
-          | SymPtr.UndefAlias -> (match m2 with
-            | Some SymPtr.Unique
-            | Some SymPtr.MayAlias -> m2
-            | _                    -> m1)) in
+            | SymPtr.Unique     -> m1
+            | SymPtr.MayAlias
+            | SymPtr.UndefAlias -> (match m2 with
+              | Some SymPtr.Unique
+              | Some SymPtr.MayAlias -> m2
+              | _                    -> m1)) in
       match ds with
       | []    -> UidM.empty
       | [h]   -> h

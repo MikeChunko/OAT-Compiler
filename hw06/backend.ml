@@ -615,7 +615,7 @@ let greedy_layout (f:Ll.fdecl) (live:liveness) : layout =
       match arg_loc !n_arg with
       | Alloc.LReg Rcx -> spill ()
       | x -> x in
-    incr n_arg; print_string (u ^ ": " ^ (Alloc.str_loc res) ^ "\n"); res in
+    incr n_arg; (*print_string (u ^ ": " ^ (Alloc.str_loc res) ^ "\n");*) res in
   (* The available palette of registers.  Excludes Rax and Rcx *)
   let pal = LocSet.(caller_save
                     |> remove (Alloc.LReg Rax)
@@ -631,7 +631,7 @@ let greedy_layout (f:Ll.fdecl) (live:liveness) : layout =
       LocSet.choose available_locs
     with
     | Not_found -> spill () in
-    print_string (uid ^ ": " ^ (Alloc.str_loc loc) ^ "\n");
+    (*print_string (uid ^ ": " ^ (Alloc.str_loc loc) ^ "\n");*)
     Platform.verb @@ Printf.sprintf "allocated: %s <- %s\n" (Alloc.str_loc loc) uid; loc in
 
   let lo =
@@ -707,7 +707,6 @@ type coloring = (uid * int) list
 let better_layout (f:Ll.fdecl) (live:liveness) : layout =
   let open Datastructures in
 
-  let n_arg = ref 1 in
   let n_spill = ref 0 in
   let n_color_args = ref 1 in
 
@@ -717,13 +716,15 @@ let better_layout (f:Ll.fdecl) (live:liveness) : layout =
   let pal = LocSet.(caller_save
                     |> remove (Alloc.LReg Rax)
                     |> remove (Alloc.LReg Rcx)
+                    |> add    (Alloc.LReg R15)
+                    |> add    (Alloc.LReg R14)
                    ) in
 
   let pal_size = LocSet.cardinal pal in
 
   let rec print_pal locs =
     match LocSet.choose_opt locs with
-    | None -> print_string "\n"
+    | None   -> print_string "\n"
     | Some l -> print_string ((Alloc.str_loc l) ^ "; "); print_pal @@ LocSet.remove l locs in
 
   (*print_pal pal;*)
@@ -744,6 +745,8 @@ let better_layout (f:Ll.fdecl) (live:liveness) : layout =
     | 5 -> Some R09
     | 6 -> Some R10
     | 7 -> Some R11
+    | 8 -> Some R14
+    | 9 -> Some R15
     | n -> None in
 
   let arg_loc (n:int) : Alloc.loc =
@@ -884,12 +887,12 @@ let better_layout (f:Ll.fdecl) (live:liveness) : layout =
   let allocate lo coloring uid =
     let loc = match List.assoc_opt uid coloring with
       | None   -> spill ()
-      | Some c -> 
-        let beginning = 
+      | Some c ->
+        let beginning =
           if String.length uid >= String.length "_tmp"
           then String.sub uid 0 (String.length "_tmp")
           else "" in
-        let ending = 
+        let ending =
           if String.length uid >= String.length "_tmp"
           then String.sub uid (String.length "_tmp") (String.length uid - String.length "_tmp")
           else "" in
@@ -897,14 +900,8 @@ let better_layout (f:Ll.fdecl) (live:liveness) : layout =
         then (match List.assoc_opt ("_arr" ^ (string_of_int ((int_of_string ending) - 2))) coloring with
           | None    -> arg_loc c
           | Some c' -> arg_loc c')
-        else arg_loc c
-      (*(match uid with
-        | "_index_ptr10" -> arg_loc 7
-        | "_index11"     -> arg_loc 6
-        | "_tmp9"        -> arg_loc 5
-        | "_arr7"        -> arg_loc 4
-        | _              -> arg_loc c)*) in
-    print_string (uid ^ ": " ^ (Alloc.str_loc loc) ^ "\n");
+        else arg_loc c in
+    (*print_string (uid ^ ": " ^ (Alloc.str_loc loc) ^ "\n");*)
     Platform.verb @@ Printf.sprintf "allocated: %s <- %s\n" (Alloc.str_loc loc) uid; loc in
 
   let lo =

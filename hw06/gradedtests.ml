@@ -99,7 +99,7 @@ let assert_quality fn ll_ast =
     mem_better < mem_greedy then ()
   else if
     size_better < size_greedy then ()
-  else failwith @@ Printf.sprintf "greedy is better: size diff = " ^ (string_of_int (size_better - size_greedy)) 
+  else failwith @@ Printf.sprintf "greedy is better: size diff = " ^ (string_of_int (size_better - size_greedy))
     ^ ", mem diff = " ^ (string_of_int (mem_better - mem_greedy))
 
 let assert_quality_oat fn () =
@@ -193,7 +193,7 @@ let executed_fullopt_file tests =
        fun () -> ll_opt_file_test path (opt n) ans)) tests
 
 
-let binop_tests = [ 
+let binop_tests = [
   "llprograms/add.ll", "14"
   ; "llprograms/sub.ll", "1"
   ; "llprograms/mul.ll", "45"
@@ -202,10 +202,10 @@ let binop_tests = [
   ; "llprograms/xor.ll", "0"
   ; "llprograms/shl.ll", "168"
   ; "llprograms/lshr.ll", "10"
-  ; "llprograms/ashr.ll", "5" 
+  ; "llprograms/ashr.ll", "5"
 ]
 
-let calling_convention_tests = [ 
+let calling_convention_tests = [
   "llprograms/call.ll", "42"
   ; "llprograms/call1.ll", "17"
   ; "llprograms/call2.ll", "19"
@@ -217,13 +217,13 @@ let calling_convention_tests = [
   ; "llprograms/call8.ll", "21"
 ]
 
-let memory_tests = [ 
+let memory_tests = [
   "llprograms/alloca1.ll", "17"
   ; "llprograms/alloca2.ll", "17"
   ; "llprograms/global1.ll", "12"
 ]
 
-let terminator_tests = [ 
+let terminator_tests = [
   "llprograms/return.ll", "0"
   ; "llprograms/return42.ll", "42"
   ; "llprograms/br1.ll", "9"
@@ -249,7 +249,7 @@ let gep_tests =
 ]
 
 
-let arithmetic_tests = [ 
+let arithmetic_tests = [
   "llprograms/add_twice.ll", "29"
 ; "llprograms/sub_neg.ll", "255" (* Why, oh why, does the termianl only report the last byte? *)
 ; "llprograms/arith_combo.ll", "4"
@@ -528,12 +528,10 @@ let tests : suite =
   ]
 
 let manual_tests : suite = [
-  (*  GradedTest ("Posted Piazza Test Case", 5,
-              [("manually", assert_eq true false)]
-    )
-  ; GradedTest ("Performance Comparison", 5,
-              [("manually", assert_eq true false)]
-    )*)
+  GradedTest ("Posted Piazza Test Case", 5,
+              [("manually", assert_eq true false)])
+; GradedTest ("Performance Comparison", 5,
+              [("manually", assert_eq true false)])
   ]
 
 let graded_tests : suite =

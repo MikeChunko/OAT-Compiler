@@ -1,6 +1,0 @@
-global b=true;
-int program (int argc, string[] argv) {
-  var i=0;
-  if (b) { i=1; }
-  return i;
-}

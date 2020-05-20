@@ -1,4 +1,0 @@
-int program (int argc, string[] argv) {
-  var x = new int[3]{i -> 0};
-  return 0;
-}

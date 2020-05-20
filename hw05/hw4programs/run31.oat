@@ -1,5 +1,0 @@
-global i=9;
-int program (int argc, string[] argv) {
-  var j = i;
-  return j;
-}

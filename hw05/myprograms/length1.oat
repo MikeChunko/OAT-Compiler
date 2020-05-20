@@ -1,4 +1,0 @@
-int program(int argc, string[] argv) {
-  var arr = new bool[5];
-  return length(arr);
-}

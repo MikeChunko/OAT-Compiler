@@ -1,5 +1,0 @@
-int program (int argc, string[] argv) {
-  var x = 17;
-  var y = 18;
-  return x + y;
-}

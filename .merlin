@@ -1,11 +1,5 @@
 S X86-Simulator/**
-S hw03/**
-S hw04/**
-S hw05/**
-S hw06/**
+S Compiler/**
 
 B X86-Simulator/_build/**
-B hw03/_build/**
-B hw04/_build/**
-B hw05/_build/**
-B hw06/_build/**
+B Compiler/_build/**

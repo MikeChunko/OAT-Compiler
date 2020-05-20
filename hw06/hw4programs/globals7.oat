@@ -1,8 +1,0 @@
-global arr = new int[] {};
-
-int program (int argc, string[] argv) {
-  var x = new int[3];
-  arr = x;
-  x[2] = 3;
-  return arr[2];
-}

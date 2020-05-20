@@ -1,4 +1,0 @@
-int f() {
-  var x = new int[][3];
-  return 2;
-}

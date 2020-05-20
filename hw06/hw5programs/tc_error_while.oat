@@ -1,5 +1,0 @@
-int program(int argc, string[] argv) {
-  while (1 > 0) {
-    return 3;
-  }
-}

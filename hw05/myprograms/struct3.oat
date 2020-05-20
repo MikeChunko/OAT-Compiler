@@ -1,9 +1,0 @@
-struct S {
-  int x
-}
-
-int program(int argc, string[] argv) {
-  var s = new S{x=1};
-  s.x = 2;
-  return s.x;
-}

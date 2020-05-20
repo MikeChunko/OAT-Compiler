@@ -1,4 +1,0 @@
-void f() {
-  var x = length_of_array(3);
-  return;
-}

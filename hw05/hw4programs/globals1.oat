@@ -1,5 +1,0 @@
-global x = 42;
-
-int program(int argc, string[] args) {
-  return x;
-}

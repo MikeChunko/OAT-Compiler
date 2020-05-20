@@ -1,5 +1,0 @@
-int program(int argc, string[] argv) {
-  var x = true;
-  var x = 3;
-  return x;
-}

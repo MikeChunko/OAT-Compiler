@@ -1,6 +1,0 @@
-global arr = int[] null; 
-
-int program (int argc, string[] argv) {
-  arr = new int[]{17,42};
-  return arr[1];
-}

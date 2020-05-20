@@ -1,7 +1,0 @@
-global x = 3;
-
-int program(int argc, string[] argv) {
-  var y = new bool[] { true };
-  y[0] = x;
-  return y;
-}

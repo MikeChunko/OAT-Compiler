@@ -1,12 +1,10 @@
-S hw01/**
-S hw02/**
+S X86-Simulator/**
 S hw03/**
 S hw04/**
 S hw05/**
 S hw06/**
 
-B hw01/_build/**
-B hw02/_build/**
+B X86-Simulator/_build/**
 B hw03/_build/**
 B hw04/_build/**
 B hw05/_build/**

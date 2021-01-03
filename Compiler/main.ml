@@ -21,7 +21,7 @@ let args =
   ; ("-c", Clear link, "stop after generating .o files; do not generate executables")
   ; ("--print-ll", Set print_ll_flag, "prints the program's LL code (after lowering to clang code if --clang-malloc is set)")
   ; ("--print-x86", Set print_x86_flag, "prints the program's assembly code")
-  ; ("--clang", Set clang, "compiles to assembly using clang, not the 516 backend (implies --clang-malloc)")
+  ; ("--clang", Set clang, "compiles to assembly using clang, not the custom-built backend (implies --clang-malloc)")
   ; ("--execute-x86", Set execute_x86, "run the resulting executable file")
   ; ("-v", Set Platform.verbose, "enables more verbose compilation output")
   ; ("-O1", Set Opt.do_opt, "enable optimization")
@@ -39,7 +39,7 @@ let _ =
   Platform.create_output_dir ();
   try
     Arg.parse args (fun filename -> files := filename :: !files)
-      "CS516 main test harness\n\
+      "Main test harness\n\
        USAGE: ./main.native [options] <files>\n\
        see README for details about using the compiler";
     Platform.configure_os ();

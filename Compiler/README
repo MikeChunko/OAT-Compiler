@@ -57,7 +57,8 @@ Using main.native for testing:
 Run the test case /programs/factrect.ll using the 516 backend:
 
 ./main.native --execute-x86 programs/factrect.ll 
---------------------------------------------------------------- Executing: a.out
+---------------------------------------------------------------
+Executing: a.out
 * a.out returned 120
 
 Run the test

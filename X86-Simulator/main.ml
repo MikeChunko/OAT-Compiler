@@ -24,7 +24,7 @@ let argspec = [
 let _ =
   try
     Arg.parse argspec (fun f -> worklist := f :: !worklist)
-        "CS516 main test harness \n";
+        "Main test harness \n";
     match !worklist with
     | [] -> print_endline "* Nothing to do"
     | _ -> List.iter do_one_file !worklist
